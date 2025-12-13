@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Omni-Science Hub</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase SDKs (Compat version for single-file usage) -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+
+    <style>
+        body { background-color: #0f172a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .message-anim { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- 1. FIREBASE SETUP ---
+        // Your specific configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyA6uWFyvcdPSSaM_TWz_aIytDXiw4JkO68",
+            authDomain: "omni-science-hub.firebaseapp.com",
+            projectId: "omni-science-hub",
+            storageBucket: "omni-science-hub.firebasestorage.app",
+            messagingSenderId: "540333608940",
+            appId: "1:540333608940:web:d42c58081d74bf7af17ac9"
+        };
+
+        // Initialize Firebase safely
+        let auth, db;
+        try {
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            auth = firebase.auth();
+            db = firebase.firestore();
+            console.log("Firebase initialized successfully");
+        } catch (error) {
+            console.error("Firebase Init Error:", error);
+        }
+
+        const { useState, useEffect, useRef } = React;
+
+        // --- COMPONENTS ---
+
+        // Login Component
+        function Login() {
+            const [isRegistering, setIsRegistering] = useState(false);
+            const [email, setEmail] = useState("");
+            const [password, setPassword] = useState("");
+            const [username, setUsername] = useState("");
+            const [error, setError] = useState("");
+
+            const handleGoogleLogin = async () => {
+                const provider = new firebase.auth.GoogleAuthProvider();
+                try {
+                    await auth.signInWithPopup(provider);
+                } catch (err) {
+                    setError(err.message);
+                }
+            };
+
+            const handleEmailAuth = async (e) => {
+                e.preventDefault();
+                setError("");
+                try {
+                    if (isRegistering) {
+                        const userCred = await auth.createUserWithEmailAndPassword(email, password);
+                        await userCred.user.updateProfile({ displayName: username });
+                    } else {
+                        await auth.signInWithEmailAndPassword(email, password);
+                    }
+                } catch (err) {
+                    setError(err.message);
+                }
+            };
+
+            return (
+                <div className="flex items-center justify-center min-h-screen bg-slate-900">
+                    <div className="w-full max-w-md p-8 space-y-6 bg-slate-800 rounded-xl shadow-2xl border border-slate-700">
+                        <div className="text-center">
+                            <h1 className="text-3xl font-bold text-cyan-400">Omni-Science Hub</h1>
+                            <p className="text-slate-400 mt-2">Connect with the community</p>
+                        </div>
+
+                        {error && <div className="p-3 bg-red-500/20 text-red-300 text-sm rounded-lg border border-red-500/50">{error}</div>}
+
+                        <div className="space-y-4">
+                            <button 
+                                onClick={handleGoogleLogin}
+                                className="w-full flex items-center justify-center gap-3 bg-white text-slate-900 font-bold py-3 rounded-lg hover:bg-slate-100 transition"
+                            >
+                                <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" alt="G" />
+                                Continue with Google
+                            </button>
+                            
+                            <div className="relative flex py-2 items-center">
+                                <div className="flex-grow border-t border-slate-600"></div>
+                                <span className="flex-shrink mx-4 text-slate-500 text-sm">Or use Omni-Account</span>
+                                <div className="flex-grow border-t border-slate-600"></div>
+                            </div>
+
+                            <form onSubmit={handleEmailAuth} className="space-y-4">
+                                {isRegistering && (
+                                    <input 
+                                        type="text" 
+                                        placeholder="Choose a Username" 
+                                        className="w-full p-3 bg-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                        required
+                                        value={username}
+                                        onChange={(e) => setUsername(e.target.value)}
+                                    />
+                                )}
+                                <input 
+                                    type="email" 
+                                    placeholder="Email Address" 
+                                    className="w-full p-3 bg-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                    required
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                />
+                                <input 
+                                    type="password" 
+                                    placeholder="Password" 
+                                    className="w-full p-3 bg-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                    required
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                />
+                                <button type="submit" className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 rounded-lg transition">
+                                    {isRegistering ? "Create Account" : "Sign In"}
+                                </button>
+                            </form>
+
+                            <p className="text-center text-sm text-slate-400">
+                                {isRegistering ? "Already have an account?" : "Need an Omni-Account?"} 
+                                <button 
+                                    onClick={() => setIsRegistering(!isRegistering)}
+                                    className="ml-2 text-cyan-400 hover:underline"
+                                >
+                                    {isRegistering ? "Login" : "Register"}
+                                </button>
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Chat Component
+        function ChatRoom({ user, onLogout }) {
+            const [messages, setMessages] = useState([]);
+            const [newMessage, setNewMessage] = useState("");
+            const bottomRef = useRef(null);
+
+            useEffect(() => {
+                if (!db) return;
+                const unsubscribe = db.collection("messages")
+                    .orderBy("timestamp", "asc")
+                    .limitToLast(50)
+                    .onSnapshot((snapshot) => {
+                        const msgs = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                        }));
+                        setMessages(msgs);
+                        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+                    });
+                return () => unsubscribe();
+            }, []);
+
+            const sendMessage = async (e) => {
+                e.preventDefault();
+                if (!newMessage.trim()) return;
+
+                const { uid, displayName, photoURL } = user;
+                const safeName = displayName || "Omni-User";
+                
+                try {
+                    await db.collection("messages").add({
+                        text: newMessage,
+                        uid,
+                        displayName: safeName,
+                        photoURL: photoURL || "",
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        platform: "Web"
+                    });
+                    setNewMessage("");
+                } catch (err) {
+                    console.error("Send failed:", err);
+                }
+            };
+
+            return (
+                <div className="flex flex-col h-screen bg-slate-900">
+                    {/* Header */}
+                    <header className="bg-slate-800 p-4 shadow-md flex justify-between items-center border-b border-slate-700">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-cyan-500 p-2 rounded-lg">
+                                <i className="fa-solid fa-atom text-white text-xl"></i>
+                            </div>
+                            <div>
+                                <h1 className="font-bold text-white text-lg hidden sm:block">Omni-Science Hub</h1>
+                                <h1 className="font-bold text-white text-lg sm:hidden">Omni-Hub</h1>
+                                <p className="text-xs text-green-400 flex items-center gap-1">
+                                    <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                                    Live
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <div className="text-right hidden sm:block">
+                                <p className="text-sm font-semibold text-slate-200">{user.displayName || "Omni-User"}</p>
+                                <p className="text-xs text-slate-400">Online</p>
+                            </div>
+                            {user.photoURL ? (
+                                <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-cyan-500" alt="Avatar" />
+                            ) : (
+                                <div className="w-10 h-10 rounded-full bg-cyan-600 flex items-center justify-center text-lg font-bold border-2 border-cyan-400">
+                                    {user.displayName ? user.displayName[0].toUpperCase() : "U"}
+                                </div>
+                            )}
+                            <button onClick={onLogout} className="p-2 text-slate-400 hover:text-red-400 transition" title="Logout">
+                                <i className="fa-solid fa-right-from-bracket text-xl"></i>
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* Messages Area */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {messages.length === 0 && (
+                            <div className="text-center text-slate-500 mt-20">
+                                <i className="fa-regular fa-comments text-4xl mb-3"></i>
+                                <p>No messages yet. Start the conversation!</p>
+                            </div>
+                        )}
+                        
+                        {messages.map((msg) => {
+                            const isMe = msg.uid === user.uid;
+                            return (
+                                <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} message-anim`}>
+                                    <div className={`flex max-w-[80%] md:max-w-[60%] gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                                        <div className="flex-shrink-0 mt-1">
+                                             {msg.photoURL ? (
+                                                <img src={msg.photoURL} className="w-8 h-8 rounded-full bg-black object-cover" />
+                                            ) : (
+                                                <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white">
+                                                    {msg.displayName ? msg.displayName[0].toUpperCase() : "?"}
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className={`p-3 rounded-2xl shadow-sm ${isMe ? 'bg-cyan-600 text-white rounded-tr-none' : 'bg-slate-700 text-slate-100 rounded-tl-none'}`}>
+                                            {!isMe && <p className="text-xs text-cyan-400 font-bold mb-1">{msg.displayName} <span className="opacity-50 font-normal">({msg.platform || "Web"})</span></p>}
+                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <div ref={bottomRef}></div>
+                    </div>
+
+                    {/* Input Area */}
+                    <div className="bg-slate-800 p-4 border-t border-slate-700">
+                        <form onSubmit={sendMessage} className="flex gap-2 max-w-4xl mx-auto">
+                            <input
+                                type="text"
+                                value={newMessage}
+                                onChange={(e) => setNewMessage(e.target.value)}
+                                placeholder="Type a message..."
+                                className="flex-1 bg-slate-700 text-white rounded-full px-6 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition placeholder-slate-400"
+                            />
+                            <button 
+                                type="submit" 
+                                className="bg-cyan-600 hover:bg-cyan-500 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition transform hover:scale-105"
+                            >
+                                <i className="fa-solid fa-paper-plane"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            );
+        }
+
+        // Main App
+        function App() {
+            const [user, setUser] = useState(null);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                if (!auth) { setLoading(false); return; }
+                const unsubscribe = auth.onAuthStateChanged((u) => {
+                    setUser(u);
+                    setLoading(false);
+                });
+                return () => unsubscribe();
+            }, []);
+
+            if (loading) return <div className="h-screen flex items-center justify-center bg-slate-900 text-cyan-500"><i className="fa-solid fa-circle-notch fa-spin text-4xl"></i></div>;
+
+            return (
+                <div className="antialiased">
+                    {user ? <ChatRoom user={user} onLogout={() => auth.signOut()} /> : <Login />}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
