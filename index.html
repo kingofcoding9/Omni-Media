@@ -3,35 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Omni-Science Hub</title>
-    <!-- Tailwind CSS -->
+    <title>Omni-Media</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- FontAwesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- Firebase SDKs (Compat version for single-file usage) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
     <style>
-        body { background-color: #0f172a; color: white; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #313338; color: #dbdee1; font-family: 'gg sans', 'Segoe UI', Tahoma, sans-serif; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .message-anim { animation: fadeIn 0.3s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .message-anim { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        .modal { background: rgba(0,0,0,0.85); }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- 1. FIREBASE SETUP ---
-        // Your specific configuration
+        // --- CONFIGURATION ---
         const firebaseConfig = {
             apiKey: "AIzaSyA6uWFyvcdPSSaM_TWz_aIytDXiw4JkO68",
             authDomain: "omni-science-hub.firebaseapp.com",
@@ -41,233 +35,163 @@
             appId: "1:540333608940:web:d42c58081d74bf7af17ac9"
         };
 
-        // Initialize Firebase safely
-        let auth, db;
-        try {
-            if (!firebase.apps.length) {
-                firebase.initializeApp(firebaseConfig);
-            }
-            auth = firebase.auth();
-            db = firebase.firestore();
-            console.log("Firebase initialized successfully");
-        } catch (error) {
-            console.error("Firebase Init Error:", error);
-        }
-
+        try { if (!firebase.apps.length) firebase.initializeApp(firebaseConfig); } catch (e) {}
+        const auth = firebase.auth();
+        const db = firebase.firestore();
         const { useState, useEffect, useRef } = React;
+
+        const formatTime = (timestamp) => {
+            if (!timestamp) return "";
+            const date = timestamp.toDate();
+            // Intelligent date formatting (Today/Yesterday)
+            const now = new Date();
+            const isToday = date.toDateString() === now.toDateString();
+            const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            
+            if (isToday) return `Today at ${timeStr}`;
+            return `${date.toLocaleDateString()} ${timeStr}`;
+        };
 
         // --- COMPONENTS ---
 
-        // Login Component
-        function Login() {
-            const [isRegistering, setIsRegistering] = useState(false);
-            const [email, setEmail] = useState("");
-            const [password, setPassword] = useState("");
-            const [username, setUsername] = useState("");
-            const [error, setError] = useState("");
+        function SettingsModal({ user, onClose }) {
+            const [newName, setNewName] = useState(user.displayName || "");
+            const [newPhoto, setNewPhoto] = useState(user.photoURL || "");
+            const [loading, setLoading] = useState(false);
 
-            const handleGoogleLogin = async () => {
-                const provider = new firebase.auth.GoogleAuthProvider();
-                try {
-                    await auth.signInWithPopup(provider);
-                } catch (err) {
-                    setError(err.message);
-                }
-            };
-
-            const handleEmailAuth = async (e) => {
+            const handleSave = async (e) => {
                 e.preventDefault();
-                setError("");
+                setLoading(true);
                 try {
-                    if (isRegistering) {
-                        const userCred = await auth.createUserWithEmailAndPassword(email, password);
-                        await userCred.user.updateProfile({ displayName: username });
-                    } else {
-                        await auth.signInWithEmailAndPassword(email, password);
-                    }
-                } catch (err) {
-                    setError(err.message);
-                }
+                    await user.updateProfile({ displayName: newName, photoURL: newPhoto });
+                    onClose();
+                    window.location.reload(); 
+                } catch (err) { alert(err.message); }
+                setLoading(false);
             };
 
             return (
-                <div className="flex items-center justify-center min-h-screen bg-slate-900">
-                    <div className="w-full max-w-md p-8 space-y-6 bg-slate-800 rounded-xl shadow-2xl border border-slate-700">
-                        <div className="text-center">
-                            <h1 className="text-3xl font-bold text-cyan-400">Omni-Science Hub</h1>
-                            <p className="text-slate-400 mt-2">Connect with the community</p>
-                        </div>
-
-                        {error && <div className="p-3 bg-red-500/20 text-red-300 text-sm rounded-lg border border-red-500/50">{error}</div>}
-
-                        <div className="space-y-4">
-                            <button 
-                                onClick={handleGoogleLogin}
-                                className="w-full flex items-center justify-center gap-3 bg-white text-slate-900 font-bold py-3 rounded-lg hover:bg-slate-100 transition"
-                            >
-                                <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5" alt="G" />
-                                Continue with Google
-                            </button>
-                            
-                            <div className="relative flex py-2 items-center">
-                                <div className="flex-grow border-t border-slate-600"></div>
-                                <span className="flex-shrink mx-4 text-slate-500 text-sm">Or use Omni-Account</span>
-                                <div className="flex-grow border-t border-slate-600"></div>
+                <div className="fixed inset-0 modal flex items-center justify-center z-50 p-4">
+                    <div className="bg-[#313338] p-6 rounded-lg max-w-sm w-full shadow-2xl border border-[#1e1f22]">
+                        <h2 className="text-xl font-bold text-white mb-4">Edit Profile</h2>
+                        <form onSubmit={handleSave} className="space-y-4">
+                            <div>
+                                <label className="text-xs text-gray-400 uppercase font-bold">Display Name</label>
+                                <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
+                                    className="w-full bg-[#1e1f22] text-white p-2.5 rounded mt-1 outline-none focus:ring-2 focus:ring-indigo-500" />
                             </div>
-
-                            <form onSubmit={handleEmailAuth} className="space-y-4">
-                                {isRegistering && (
-                                    <input 
-                                        type="text" 
-                                        placeholder="Choose a Username" 
-                                        className="w-full p-3 bg-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                                        required
-                                        value={username}
-                                        onChange={(e) => setUsername(e.target.value)}
-                                    />
-                                )}
-                                <input 
-                                    type="email" 
-                                    placeholder="Email Address" 
-                                    className="w-full p-3 bg-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                                    required
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                />
-                                <input 
-                                    type="password" 
-                                    placeholder="Password" 
-                                    className="w-full p-3 bg-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                                    required
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                />
-                                <button type="submit" className="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-3 rounded-lg transition">
-                                    {isRegistering ? "Create Account" : "Sign In"}
+                            <div>
+                                <label className="text-xs text-gray-400 uppercase font-bold">Avatar URL</label>
+                                <input type="text" value={newPhoto} onChange={e => setNewPhoto(e.target.value)} placeholder="https://..."
+                                    className="w-full bg-[#1e1f22] text-white p-2.5 rounded mt-1 outline-none focus:ring-2 focus:ring-indigo-500" />
+                            </div>
+                            <div className="flex gap-2 pt-2">
+                                <button type="button" onClick={onClose} className="flex-1 hover:underline text-white py-2">Cancel</button>
+                                <button type="submit" className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white py-2 rounded font-medium transition">
+                                    {loading ? "Saving..." : "Save"}
                                 </button>
-                            </form>
-
-                            <p className="text-center text-sm text-slate-400">
-                                {isRegistering ? "Already have an account?" : "Need an Omni-Account?"} 
-                                <button 
-                                    onClick={() => setIsRegistering(!isRegistering)}
-                                    className="ml-2 text-cyan-400 hover:underline"
-                                >
-                                    {isRegistering ? "Login" : "Register"}
-                                </button>
-                            </p>
-                        </div>
+                            </div>
+                        </form>
                     </div>
                 </div>
             );
         }
 
-        // Chat Component
-        function ChatRoom({ user, onLogout }) {
+        function Login() {
+            const handleGoogle = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+            return (
+                <div className="flex items-center justify-center min-h-screen bg-[#313338] bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]">
+                    <div className="text-center space-y-8 p-10">
+                        <div className="flex justify-center mb-4">
+                            <div className="w-20 h-20 bg-indigo-500 rounded-2xl flex items-center justify-center shadow-lg rotate-3 hover:rotate-0 transition duration-500">
+                                <i className="fa-solid fa-atom text-white text-4xl"></i>
+                            </div>
+                        </div>
+                        <h1 className="text-5xl font-black text-white tracking-tight">Omni-Media</h1>
+                        <p className="text-gray-400 text-lg">Connect. Collaborate. Create.</p>
+                        <button onClick={handleGoogle} className="px-8 py-3 bg-white text-gray-900 font-bold rounded-full hover:scale-105 transition shadow-xl flex items-center gap-3 mx-auto">
+                            <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5"/>
+                            Enter Hub
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        function ChatRoom({ user }) {
             const [messages, setMessages] = useState([]);
-            const [newMessage, setNewMessage] = useState("");
+            const [text, setText] = useState("");
+            const [showSettings, setShowSettings] = useState(false);
             const bottomRef = useRef(null);
 
             useEffect(() => {
-                if (!db) return;
-                const unsubscribe = db.collection("messages")
-                    .orderBy("timestamp", "asc")
-                    .limitToLast(50)
-                    .onSnapshot((snapshot) => {
-                        const msgs = snapshot.docs.map(doc => ({
-                            id: doc.id,
-                            ...doc.data()
-                        }));
-                        setMessages(msgs);
-                        setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-                    });
-                return () => unsubscribe();
+                const unsub = db.collection("messages").orderBy("timestamp", "asc").limitToLast(60).onSnapshot(snap => {
+                    setMessages(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                    setTimeout(() => bottomRef.current?.scrollIntoView({behavior: 'smooth'}), 100);
+                });
+                return unsub;
             }, []);
 
-            const sendMessage = async (e) => {
+            const send = async (e) => {
                 e.preventDefault();
-                if (!newMessage.trim()) return;
-
-                const { uid, displayName, photoURL } = user;
-                const safeName = displayName || "Omni-User";
-                
+                if (!text.trim()) return;
                 try {
                     await db.collection("messages").add({
-                        text: newMessage,
-                        uid,
-                        displayName: safeName,
-                        photoURL: photoURL || "",
-                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        text, uid: user.uid, displayName: user.displayName || "Omni-User",
+                        photoURL: user.photoURL || "", timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                         platform: "Web"
                     });
-                    setNewMessage("");
-                } catch (err) {
-                    console.error("Send failed:", err);
-                }
+                    setText("");
+                } catch(err) { console.error(err); }
             };
 
             return (
-                <div className="flex flex-col h-screen bg-slate-900">
-                    {/* Header */}
-                    <header className="bg-slate-800 p-4 shadow-md flex justify-between items-center border-b border-slate-700">
+                <div className="flex flex-col h-screen bg-[#313338]">
+                    {showSettings && <SettingsModal user={user} onClose={() => setShowSettings(false)} />}
+                    
+                    <header className="bg-[#2b2d31] p-3 px-4 border-b border-[#1f2023] flex justify-between items-center shadow-sm z-10">
                         <div className="flex items-center gap-3">
-                            <div className="bg-cyan-500 p-2 rounded-lg">
-                                <i className="fa-solid fa-atom text-white text-xl"></i>
-                            </div>
-                            <div>
-                                <h1 className="font-bold text-white text-lg hidden sm:block">Omni-Science Hub</h1>
-                                <h1 className="font-bold text-white text-lg sm:hidden">Omni-Hub</h1>
-                                <p className="text-xs text-green-400 flex items-center gap-1">
-                                    <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                                    Live
-                                </p>
-                            </div>
+                            <i className="fa-solid fa-hashtag text-gray-400 text-xl"></i>
+                            <h1 className="font-bold text-white text-lg tracking-tight">general-chat</h1>
                         </div>
                         <div className="flex items-center gap-4">
-                            <div className="text-right hidden sm:block">
-                                <p className="text-sm font-semibold text-slate-200">{user.displayName || "Omni-User"}</p>
-                                <p className="text-xs text-slate-400">Online</p>
+                            <div className="flex items-center gap-2 cursor-pointer hover:bg-[#3f4147] p-1.5 rounded transition" onClick={() => setShowSettings(true)}>
+                                <span className="text-sm font-medium text-white max-w-[150px] truncate hidden sm:block">{user.displayName}</span>
+                                {user.photoURL ? 
+                                    <img src={user.photoURL} className="w-8 h-8 rounded-full bg-black object-cover" /> : 
+                                    <div className="w-8 h-8 bg-indigo-500 rounded-full flex items-center justify-center text-sm font-bold text-white">{user.displayName?.[0]}</div>
+                                }
                             </div>
-                            {user.photoURL ? (
-                                <img src={user.photoURL} className="w-10 h-10 rounded-full border-2 border-cyan-500" alt="Avatar" />
-                            ) : (
-                                <div className="w-10 h-10 rounded-full bg-cyan-600 flex items-center justify-center text-lg font-bold border-2 border-cyan-400">
-                                    {user.displayName ? user.displayName[0].toUpperCase() : "U"}
-                                </div>
-                            )}
-                            <button onClick={onLogout} className="p-2 text-slate-400 hover:text-red-400 transition" title="Logout">
-                                <i className="fa-solid fa-right-from-bracket text-xl"></i>
-                            </button>
+                            <button onClick={() => auth.signOut()} className="text-gray-400 hover:text-red-400" title="Logout"><i className="fa-solid fa-right-from-bracket"></i></button>
                         </div>
                     </header>
 
-                    {/* Messages Area */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {messages.length === 0 && (
-                            <div className="text-center text-slate-500 mt-20">
-                                <i className="fa-regular fa-comments text-4xl mb-3"></i>
-                                <p>No messages yet. Start the conversation!</p>
-                            </div>
-                        )}
-                        
-                        {messages.map((msg) => {
-                            const isMe = msg.uid === user.uid;
+                    <div className="flex-1 overflow-y-auto p-4 space-y-1">
+                        {messages.map((msg, i) => {
+                            const isSequence = i > 0 && messages[i-1].uid === msg.uid && (msg.timestamp?.seconds - messages[i-1].timestamp?.seconds < 300);
+                            
                             return (
-                                <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'} message-anim`}>
-                                    <div className={`flex max-w-[80%] md:max-w-[60%] gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-                                        <div className="flex-shrink-0 mt-1">
-                                             {msg.photoURL ? (
-                                                <img src={msg.photoURL} className="w-8 h-8 rounded-full bg-black object-cover" />
-                                            ) : (
-                                                <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-xs font-bold text-white">
-                                                    {msg.displayName ? msg.displayName[0].toUpperCase() : "?"}
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className={`p-3 rounded-2xl shadow-sm ${isMe ? 'bg-cyan-600 text-white rounded-tr-none' : 'bg-slate-700 text-slate-100 rounded-tl-none'}`}>
-                                            {!isMe && <p className="text-xs text-cyan-400 font-bold mb-1">{msg.displayName} <span className="opacity-50 font-normal">({msg.platform || "Web"})</span></p>}
-                                            <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                                        </div>
+                                <div key={msg.id} className={`group flex gap-4 pr-4 pl-2 py-0.5 hover:bg-[#2e3035] rounded transition ${!isSequence ? 'mt-4' : ''} message-anim`}>
+                                    {/* Avatar Column */}
+                                    <div className="w-10 flex-shrink-0 pt-0.5 cursor-pointer">
+                                        {!isSequence && (
+                                            msg.photoURL ? 
+                                            <img src={msg.photoURL} className="w-10 h-10 rounded-full bg-black object-cover hover:opacity-80 transition" /> : 
+                                            <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center text-lg font-bold text-white hover:opacity-80 transition">{msg.displayName?.[0]}</div>
+                                        )}
+                                        {isSequence && <span className="text-[10px] text-gray-500 hidden group-hover:block ml-2">{formatTime(msg.timestamp).split('at ')[1]}</span>}
+                                    </div>
+
+                                    {/* Content Column */}
+                                    <div className="flex-1 min-w-0">
+                                        {!isSequence && (
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-medium text-white hover:underline cursor-pointer">{msg.displayName}</span>
+                                                {msg.platform === 'Discord' && <span className="bg-[#5865F2] text-[10px] px-1 rounded text-white font-bold">BOT</span>}
+                                                <span className="text-xs text-gray-400 ml-1">{formatTime(msg.timestamp)}</span>
+                                            </div>
+                                        )}
+                                        <p className={`text-[#dcddde] text-[15px] leading-6 whitespace-pre-wrap break-words ${msg.platform === 'Discord' ? '' : ''}`}>{msg.text}</p>
                                     </div>
                                 </div>
                             );
@@ -275,53 +199,33 @@
                         <div ref={bottomRef}></div>
                     </div>
 
-                    {/* Input Area */}
-                    <div className="bg-slate-800 p-4 border-t border-slate-700">
-                        <form onSubmit={sendMessage} className="flex gap-2 max-w-4xl mx-auto">
-                            <input
-                                type="text"
-                                value={newMessage}
-                                onChange={(e) => setNewMessage(e.target.value)}
-                                placeholder="Type a message..."
-                                className="flex-1 bg-slate-700 text-white rounded-full px-6 py-3 focus:outline-none focus:ring-2 focus:ring-cyan-500 transition placeholder-slate-400"
+                    <div className="p-4 bg-[#313338]">
+                        <form onSubmit={send} className="bg-[#383a40] rounded-lg flex items-center px-4 py-2.5">
+                            <button type="button" className="text-gray-400 hover:text-gray-200 mr-4"><i className="fa-solid fa-circle-plus text-xl"></i></button>
+                            <input 
+                                value={text} 
+                                onChange={e => setText(e.target.value)} 
+                                placeholder={`Message #${"general-chat"}`}
+                                className="flex-1 bg-transparent text-white placeholder-gray-500 outline-none h-full"
                             />
-                            <button 
-                                type="submit" 
-                                className="bg-cyan-600 hover:bg-cyan-500 text-white w-12 h-12 rounded-full flex items-center justify-center shadow-lg transition transform hover:scale-105"
-                            >
-                                <i className="fa-solid fa-paper-plane"></i>
-                            </button>
+                            <div className="flex gap-3 text-gray-400 text-xl ml-2">
+                                <button type="submit" className={`hover:text-indigo-400 transition ${text.trim() ? 'text-indigo-500' : ''}`}><i className="fa-solid fa-paper-plane"></i></button>
+                            </div>
                         </form>
                     </div>
                 </div>
             );
         }
 
-        // Main App
         function App() {
             const [user, setUser] = useState(null);
             const [loading, setLoading] = useState(true);
-
-            useEffect(() => {
-                if (!auth) { setLoading(false); return; }
-                const unsubscribe = auth.onAuthStateChanged((u) => {
-                    setUser(u);
-                    setLoading(false);
-                });
-                return () => unsubscribe();
-            }, []);
-
-            if (loading) return <div className="h-screen flex items-center justify-center bg-slate-900 text-cyan-500"><i className="fa-solid fa-circle-notch fa-spin text-4xl"></i></div>;
-
-            return (
-                <div className="antialiased">
-                    {user ? <ChatRoom user={user} onLogout={() => auth.signOut()} /> : <Login />}
-                </div>
-            );
+            useEffect(() => auth.onAuthStateChanged(u => { setUser(u); setLoading(false); }), []);
+            if (loading) return <div className="h-screen flex items-center justify-center bg-[#313338] text-indigo-500"><i className="fa-solid fa-circle-notch fa-spin text-4xl"></i></div>;
+            return user ? <ChatRoom user={user} /> : <Login />;
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     </script>
 </body>
 </html>
