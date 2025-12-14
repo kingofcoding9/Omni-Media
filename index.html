@@ -46,15 +46,21 @@
         const { useState, useEffect, useRef } = React;
 
         // --- ROBUST SOCKET CONNECTION ---
-        // Simplified connection because main.py now serves this file directly
-        const socket = io({
-            transports: ['polling', 'websocket'],
-            reconnectionAttempts: 15,
-            timeout: 10000
+        
+        // UPDATED: Using your specific Space Direct URL
+        const BACKEND_URL = "https://kingofcoding9-omni-bot-backend.hf.space"; 
+
+        console.log("Connecting to backend at:", BACKEND_URL);
+
+        const socket = io(BACKEND_URL, {
+            transports: ['polling', 'websocket'], 
+            reconnectionAttempts: 20,
+            timeout: 20000,
+            withCredentials: true // CRITICAL: This allows the browser to send your HF login cookie
         });
 
         // Debugging
-        socket.on("connect", () => console.log("Socket Connected!"));
+        socket.on("connect", () => console.log("Socket Connected! ID:", socket.id));
         socket.on("connect_error", (err) => console.error("Socket Error:", err));
 
         // --- UTILS ---
@@ -340,6 +346,7 @@
             const [activeChannel, setActiveChannel] = useState(null);
             const [targetProfile, setTargetProfile] = useState(null);
             const [connected, setConnected] = useState(false);
+            const [connectionError, setConnectionError] = useState(null);
 
             useEffect(() => {
                 const unsub = auth.onAuthStateChanged(async u => { 
@@ -349,8 +356,19 @@
                         socket.emit('authenticate', token);
                     }
                 });
-                socket.on('connect', () => setConnected(true));
+
+                socket.on('connect', () => {
+                    setConnected(true);
+                    setConnectionError(null);
+                });
+                
                 socket.on('disconnect', () => setConnected(false));
+                
+                socket.on('connect_error', (err) => {
+                    console.error("Connection Error:", err);
+                    setConnectionError(err.message);
+                });
+
                 socket.on('init_data', (data) => { setSectors(data.sectors); setDms(data.dms); });
                 socket.on('update_sectors', (data) => setSectors(data));
                 socket.on('update_dms', (data) => setDms(data));
@@ -376,7 +394,17 @@
             if (!user) return <div className="h-full flex items-center justify-center bg-black"><button onClick={() => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())} className="glass-panel px-10 py-5 rounded-2xl text-white font-bold uppercase tracking-[0.2em] border border-blue-500/30 hover:bg-blue-600/20"><i className="fa-brands fa-google mr-3"></i> Initialize Uplink</button></div>;
             
             // Show connecting screen if stuck
-            if(!connected) return <div className="h-full flex items-center justify-center bg-black text-blue-500 font-mono animate-pulse">ESTABLISHING SOCKET LINK...</div>;
+            if(!connected) {
+                return (
+                    <div className="h-full flex flex-col items-center justify-center bg-black font-mono">
+                        <div className="text-blue-500 animate-pulse mb-4">ESTABLISHING SOCKET LINK...</div>
+                        {connectionError && <div className="text-red-500 text-xs max-w-md text-center bg-red-900/20 p-4 rounded border border-red-800">
+                            ERROR: {connectionError} <br/>
+                            <span className="text-slate-500 mt-2 block">If Error is 'xhr poll error', please ensure you are logged into Hugging Face in this browser, or make the Space Public.</span>
+                        </div>}
+                    </div>
+                );
+            }
 
             const activeSectorData = sectors.find(s => s.id === activeSectorId);
 
