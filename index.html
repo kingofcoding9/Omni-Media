@@ -142,29 +142,56 @@
         });
 
         // --- UTILITIES ---
-        const compressImage = (file, maxWidth = 600) => {
+        
+        // Improved Image Processor
+        const processImage = (file) => {
             return new Promise((resolve, reject) => {
+                // Safety Check: 2MB absolute limit for safety
+                if (file.size > 2 * 1024 * 1024) {
+                    reject(new Error("File too large. Max 2MB."));
+                    return;
+                }
+
                 const reader = new FileReader();
                 reader.onload = (e) => {
+                    const result = e.target.result;
+                    
+                    // If GIF, return directly (preserve animation)
+                    if (file.type === 'image/gif') {
+                        // Optional: stricter size check for GIFs as they don't compress
+                        if (file.size > 1.5 * 1024 * 1024) {
+                            reject(new Error("GIF too large. Max 1.5MB for animations."));
+                            return;
+                        }
+                        resolve(result);
+                        return;
+                    }
+
+                    // For JPG/PNG, we compress
                     const img = new Image();
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
                         let width = img.width;
                         let height = img.height;
+                        const maxWidth = 600; // Good balance for chat
+
                         if (width > maxWidth) {
                             height = height * (maxWidth / width);
                             width = maxWidth;
                         }
+                        
                         canvas.width = width;
                         canvas.height = height;
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // Compress to JPEG 0.8 quality
                         resolve(canvas.toDataURL('image/jpeg', 0.8));
                     };
-                    img.onerror = reject;
-                    img.src = e.target.result;
+                    img.onerror = () => reject(new Error("Image load failed"));
+                    img.src = result;
                 };
-                reader.onerror = reject;
+                reader.onerror = () => reject(new Error("File read failed"));
                 reader.readAsDataURL(file);
             });
         };
@@ -237,12 +264,11 @@
             const isDM = activeSectorId === 'dms';
             const [searchTerm, setSearchTerm] = useState("");
             
-            // Safety check: if we are supposed to show a sector but data is missing
             if (!isDM && !activeSectorData) {
                 return (
                      <div className="w-full md:w-64 h-full bg-[#0a0f16] flex flex-col border-r border-slate-800/50 flex-shrink-0 items-center justify-center text-slate-600">
                         <i className="fa-solid fa-spinner fa-spin mb-2"></i>
-                        <span className="text-xs">Loading Sector...</span>
+                        <span className="text-xs">Loading...</span>
                     </div>
                 );
             }
@@ -289,9 +315,7 @@
                         ) : (
                             <>
                                 {['text', 'voice', 'forum'].map(type => {
-                                    // Ensure channels array exists with || []
                                     const channels = activeSectorData.channels?.filter(c => c.type === type) || [];
-                                    // Only show Text channels for Global usually, but let's be flexible
                                     if (activeSectorData.id === 'global' && type !== 'text') return null;
                                     
                                     return (
@@ -302,7 +326,6 @@
                                                     {type === 'voice' && <i className="fa-solid fa-microphone text-[9px]"></i>}
                                                     {type.toUpperCase()} CHANNELS
                                                 </span>
-                                                {/* Only owner can create channels */}
                                                 {activeSectorData.ownerId === user.uid && (
                                                     <button onClick={() => onCreateChannel(type)} className="text-slate-600 hover:text-white opacity-0 group-hover:opacity-100 transition"><i className="fa-solid fa-plus text-[10px]"></i></button>
                                                 )}
@@ -336,8 +359,6 @@
             const [inputText, setInputText] = useState("");
             const bottomRef = useRef();
             const [isUploading, setIsUploading] = useState(false);
-            const [isStreaming, setIsStreaming] = useState(false);
-            const [isInCall, setIsInCall] = useState(false);
 
             useEffect(() => {
                 if (!channel) return;
@@ -362,9 +383,13 @@
                 if(!file) return;
                 setIsUploading(true);
                 try {
-                    const base64 = await compressImage(file);
+                    const base64 = await processImage(file);
                     socket.emit('send_message', { channelId: channel.id, text: "", imageURL: base64, uid: user.uid, displayName: user.displayName, photoURL: user.photoURL });
-                } catch(err) { alert("Upload failed."); } finally { setIsUploading(false); }
+                } catch(err) { 
+                    alert(err.message || "Upload failed."); 
+                } finally { 
+                    setIsUploading(false); 
+                }
             };
 
             if (channel.type === 'voice') {
@@ -433,8 +458,41 @@
             const [bio, setBio] = useState(targetUser.bio || "No data.");
             const [displayName, setDisplayName] = useState(targetUser.displayName);
             const isMe = currentUser.uid === targetUser.uid;
-            const handleSave = async () => { if(displayName !== currentUser.displayName) { await currentUser.updateProfile({ displayName }); } socket.emit('update_profile', { uid: currentUser.uid, bio, displayName }); setIsEditing(false); };
-            const handlePhoto = async (e) => { const file = e.target.files[0]; if(file) { const b64 = await compressImage(file, 200); await currentUser.updateProfile({ photoURL: b64 }); socket.emit('update_profile', { uid: currentUser.uid, photoURL: b64 }); }};
+
+            // --- PERSISTENCE LOGIC ---
+            useEffect(() => {
+                if(isMe) {
+                    const savedBio = localStorage.getItem(`omni_bio_${currentUser.uid}`);
+                    if(savedBio) setBio(savedBio);
+                }
+            }, [targetUser, isMe, currentUser.uid]);
+
+            const handleSave = async () => { 
+                if(displayName !== currentUser.displayName) { 
+                    await currentUser.updateProfile({ displayName }); 
+                } 
+                
+                // Save locally first for instant feedback
+                if (isMe) {
+                    localStorage.setItem(`omni_bio_${currentUser.uid}`, bio);
+                }
+
+                socket.emit('update_profile', { uid: currentUser.uid, bio, displayName }); 
+                setIsEditing(false); 
+            };
+
+            const handlePhoto = async (e) => { 
+                const file = e.target.files[0]; 
+                if(file) { 
+                    try {
+                        const b64 = await processImage(file); 
+                        await currentUser.updateProfile({ photoURL: b64 }); 
+                        socket.emit('update_profile', { uid: currentUser.uid, photoURL: b64 }); 
+                    } catch(err) {
+                        alert(err.message || "Photo update failed");
+                    }
+                }
+            };
 
             return (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 anim-fade" onClick={onClose}>
@@ -511,9 +569,6 @@
                 );
             }
 
-            // --- CRITICAL FIX: Safe Sector Lookup ---
-            // We search for the sector object. If activeSectorId is 'global', we find the one with id 'global'.
-            // If it's a custom sector, we find that specific one.
             const activeSectorData = sectors.find(s => s.id === activeSectorId);
 
             if (isMobile) {
