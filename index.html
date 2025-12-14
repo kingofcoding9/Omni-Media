@@ -27,7 +27,6 @@
         .anim-fade { animation: fadeIn 0.2s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
         
-        /* Markdown Styles */
         .md-link { color: #3b82f6; text-decoration: none; border-bottom: 1px dotted #3b82f6; }
         .md-link:hover { text-decoration: none; border-bottom: 1px solid #60a5fa; color: #60a5fa; }
         .md-code { background: rgba(0,0,0,0.3); padding: 2px 4px; border-radius: 4px; font-family: monospace; color: #e2e8f0; border: 1px solid rgba(255,255,255,0.1); }
@@ -52,11 +51,15 @@
 
         // --- CONNECTION CONFIG ---
         const BACKEND_URL = "https://kingofcoding9-omni-bot-backend.hf.space"; 
+        const AUTH_KEY = "e359e758-78c5-44fd-a971-9057c3d2763f"; // Only this key can enter
 
         const socket = io(BACKEND_URL, {
             transports: ['polling', 'websocket'],
             reconnectionAttempts: 20,
-            timeout: 20000
+            timeout: 20000,
+            auth: {
+                serverKey: AUTH_KEY // Sending the key to backend
+            }
         });
 
         // Debugging
@@ -87,8 +90,6 @@
         // --- MARKDOWN COMPONENT ---
         const RichText = ({ text }) => {
             if (!text) return null;
-
-            // 1. Split by Code Blocks `...`
             const parseCode = (str) => {
                 const parts = str.split(/(`[^`]+`)/g);
                 return parts.map((part, i) => {
@@ -98,8 +99,6 @@
                     return parseLinks(part, i);
                 });
             };
-
-            // 2. Split by Links [text](url)
             const parseLinks = (str, keyPrefix) => {
                 const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
                 const parts = [];
@@ -113,16 +112,12 @@
                 if (lastIndex < str.length) parts.push(parseFormat(str.substring(lastIndex), `${keyPrefix}-end`));
                 return parts;
             };
-
-            // 3. Parse Bold **...** and Italic *...*
             const parseFormat = (str, key) => {
-                // We use a simple strategy: split by ** then by *
                 const boldParts = str.split(/\*\*([^*]+)\*\*/g);
                 return (
                     <span key={key}>
                         {boldParts.map((bPart, bI) => {
-                            if (bI % 2 === 1) return <strong key={bI}>{bPart}</strong>; // Bold
-                            // Process Italic inside non-bold parts
+                            if (bI % 2 === 1) return <strong key={bI}>{bPart}</strong>;
                             const italicParts = bPart.split(/\*([^*]+)\*/g);
                             return (
                                 <span key={bI}>
@@ -136,10 +131,8 @@
                     </span>
                 );
             };
-
             return <span>{parseCode(text)}</span>;
         };
-
 
         // --- COMPONENTS ---
 
@@ -148,11 +141,9 @@
             const [bio, setBio] = useState(targetUser.bio || "No tactical data available.");
             const [displayName, setDisplayName] = useState(targetUser.displayName);
             
-            // If editing my own profile, load my current data
             useEffect(() => {
                 if (targetUser.uid === currentUser.uid) {
                     setDisplayName(currentUser.displayName);
-                    // Note: In a real app, bio should come from the user object in DB
                 }
             }, [targetUser, currentUser]);
 
@@ -162,7 +153,6 @@
                 }
                 socket.emit('update_profile', { uid: currentUser.uid, bio, displayName });
                 setIsEditing(false);
-                // Ideally, trigger a refresh or update local user state
             };
 
             const handlePhotoUpload = async (e) => {
@@ -220,7 +210,6 @@
                         <div onClick={onCreateSector} className="flex-shrink-0 w-12 h-12 rounded-2xl bg-slate-800/30 border border-dashed border-slate-600 text-slate-500 hover:text-green-400 hover:border-green-400 flex items-center justify-center cursor-pointer transition"><i className="fa-solid fa-plus"></i></div>
                     </div>
                     
-                    {/* User Profile Button */}
                     <div onClick={onOpenProfile} className="relative group w-12 h-12 flex-shrink-0 mb-2">
                         <img src={user.photoURL || `https://ui-avatars.com/api/?name=${user.displayName}`} className="w-full h-full rounded-full border border-slate-600 hover:border-white cursor-pointer object-cover transition" />
                         <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border border-black"></div>
@@ -234,7 +223,6 @@
         function DMDirectory({ user, dms, onSelectDM, isMobileVisible }) {
             const [search, setSearch] = useState("");
             const mobileClass = isMobileVisible ? 'flex' : 'hidden md:flex';
-            
             return (
                 <div className={`flex-1 bg-black/40 flex-col h-full relative z-50 ${mobileClass}`}>
                     <header className="h-16 border-b border-slate-800 flex items-center px-4 glass-panel justify-between"><h2 className="text-lg font-bold text-white tracking-widest">DIRECT UPLINKS</h2></header>
@@ -253,9 +241,7 @@
             if (!activeSector || activeSector === 'dms') return null;
             const title = activeSector === 'global' ? "GLOBAL FEED" : activeSector.name;
             const isOwner = activeSector.ownerId === user.uid;
-            
             const mobileClass = isMobileVisible ? 'flex' : 'hidden md:flex';
-
             return (
                 <div className={`w-full md:w-60 h-full bg-[#0a0f16] flex-col border-r border-slate-800/50 z-20 flex-shrink-0 ${mobileClass}`}> 
                     <div className="p-4 border-b border-slate-800/50 h-16 flex flex-col justify-center flex-shrink-0">
@@ -320,7 +306,6 @@
                 }
             }, [channel]);
 
-            // --- VOICE LOGIC ---
             const startCall = async () => {
                 setIsInCall(true);
                 const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
@@ -491,7 +476,7 @@
                         <div className="text-blue-500 animate-pulse mb-4">ESTABLISHING SOCKET LINK...</div>
                         {connectionError && <div className="text-red-500 text-xs max-w-md text-center bg-red-900/20 p-4 rounded border border-red-800">
                             ERROR: {connectionError} <br/>
-                            <span className="text-slate-500 mt-2 block">If Error is 'xhr poll error', please ensure you are logged into Hugging Face in this browser.</span>
+                            <span className="text-slate-500 mt-2 block">If Error is 'xhr poll error', please ensure the Space is PUBLIC. (The UUID safeguards it).</span>
                         </div>}
                     </div>
                 );
