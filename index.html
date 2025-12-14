@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Omni-OS v3.0</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Omni-OS v3.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -17,18 +17,36 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
     <style>
-        :root { --neon-blue: #3b82f6; --neon-cyan: #06b6d4; --bg-dark: #050505; --glass: rgba(15, 23, 42, 0.7); }
-        body { 
+        :root { --neon-blue: #3b82f6; --neon-cyan: #06b6d4; --bg-dark: #050505; --glass: rgba(15, 23, 42, 0.9); }
+        
+        /* 1. STRICT VIEWPORT CONTROL */
+        html, body {
+            height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden;
             background-color: var(--bg-dark); color: #e0e0e0; font-family: 'Exo 2', sans-serif;
-            background-image: url("https://www.transparenttextures.com/patterns/dark-matter.png"), radial-gradient(circle at 50% 50%, #111827 0%, #000000 100%);
-            height: 100vh; overflow: hidden;
+            position: fixed; /* Locks viewport on mobile */
+            inset: 0;
         }
+        
+        #root { height: 100%; width: 100%; display: flex; overflow: hidden; }
+
+        /* Background Texture */
+        body::before {
+            content: ""; position: absolute; inset: 0; z-index: -1;
+            background-image: url("https://www.transparenttextures.com/patterns/dark-matter.png"), radial-gradient(circle at 50% 50%, #111827 0%, #000000 100%);
+            opacity: 0.8;
+        }
+
+        /* 2. UI UTILITIES */
         .glass-panel { background: var(--glass); backdrop-filter: blur(20px); border-right: 1px solid rgba(255, 255, 255, 0.05); }
         .glass-item { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); }
         .glass-item:hover { background: rgba(255, 255, 255, 0.08); border-color: rgba(59, 130, 246, 0.3); }
-        .active-nav { border-left: 3px solid #3b82f6; background: linear-gradient(90deg, rgba(59,130,246,0.1) 0%, transparent 100%); }
-        .scroll-hide::-webkit-scrollbar { display: none; }
-        .clip-hex { clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); }
+        .scroll-hide::-webkit-scrollbar { display: none; } /* Clean scrollbars for Nav */
+        
+        /* Standard Scrollbar for Chat */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+
         .anim-fade { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
@@ -54,120 +72,211 @@
 
         // --- COMPONENTS ---
 
-        // 1. NAVIGATION RAIL (Far Left)
-        function NavRail({ sectors, onSelect, activeId, onCreateSector }) {
+        // NOTIFICATION SETTINGS MODAL
+        function SettingsModal({ user, onClose }) {
+            const [prefs, setPrefs] = useState({ web: true, email: false, mobile: false });
+            const [saving, setSaving] = useState(false);
+
+            useEffect(() => {
+                db.collection('users').doc(user.uid).get().then(doc => {
+                    if (doc.exists && doc.data().notifications) {
+                        setPrefs(doc.data().notifications);
+                    }
+                });
+            }, []);
+
+            const toggle = (key) => setPrefs(p => ({...p, [key]: !p[key]}));
+
+            const save = async () => {
+                setSaving(true);
+                // 1. Request Web Permission immediately if enabled
+                if (prefs.web && Notification.permission !== 'granted') {
+                    await Notification.requestPermission();
+                }
+                
+                // 2. Save to Firestore
+                await db.collection('users').doc(user.uid).set({
+                    notifications: prefs,
+                    email: user.email, // Ensure we have the email for backend scripts
+                    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                
+                setSaving(false);
+                onClose();
+            };
+
             return (
-                <div className="w-[72px] flex-shrink-0 flex flex-col items-center py-4 gap-4 glass-panel z-30">
-                    {/* Home / Global */}
-                    <div onClick={() => onSelect('global')} className={`w-12 h-12 rounded-2xl flex items-center justify-center cursor-pointer transition-all duration-300 ${activeId === 'global' ? 'bg-blue-600 text-white shadow-[0_0_15px_#2563eb]' : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700'}`}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="bg-[#0f172a] border border-slate-700 p-6 rounded-2xl w-full max-w-sm shadow-2xl">
+                        <h2 className="text-xl font-bold text-white mb-1">Comm Protocol</h2>
+                        <p className="text-xs text-slate-500 mb-6 uppercase tracking-widest">Notification Settings</p>
+                        
+                        <div className="space-y-4">
+                            {/* Web Push */}
+                            <div onClick={() => toggle('web')} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 cursor-pointer border border-transparent hover:border-blue-500/50 transition">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded flex items-center justify-center ${prefs.web ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                                        <i className="fa-solid fa-bell"></i>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-white">Browser Uplink</p>
+                                        <p className="text-[10px] text-slate-400">Desktop & Mobile Web alerts</p>
+                                    </div>
+                                </div>
+                                <div className={`w-3 h-3 rounded-full ${prefs.web ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-slate-600'}`}></div>
+                            </div>
+
+                            {/* Email */}
+                            <div onClick={() => toggle('email')} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 cursor-pointer border border-transparent hover:border-blue-500/50 transition">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded flex items-center justify-center ${prefs.email ? 'bg-purple-600 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                                        <i className="fa-solid fa-envelope"></i>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-white">Email Relay</p>
+                                        <p className="text-[10px] text-slate-400">Daily summaries to {user.email?.split('@')[0]}...</p>
+                                    </div>
+                                </div>
+                                <div className={`w-3 h-3 rounded-full ${prefs.email ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-slate-600'}`}></div>
+                            </div>
+
+                            {/* Mobile App (Future) */}
+                            <div onClick={() => toggle('mobile')} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 cursor-pointer border border-transparent hover:border-blue-500/50 transition opacity-75">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-8 h-8 rounded flex items-center justify-center ${prefs.mobile ? 'bg-orange-600 text-white' : 'bg-slate-700 text-slate-400'}`}>
+                                        <i className="fa-solid fa-mobile-screen"></i>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-white">Device Push</p>
+                                        <p className="text-[10px] text-slate-400">Native app alerts (Offline)</p>
+                                    </div>
+                                </div>
+                                <div className={`w-3 h-3 rounded-full ${prefs.mobile ? 'bg-green-500 shadow-[0_0_10px_#22c55e]' : 'bg-slate-600'}`}></div>
+                            </div>
+                        </div>
+
+                        <div className="mt-8 flex gap-3">
+                            <button onClick={onClose} className="flex-1 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs uppercase tracking-wider">Cancel</button>
+                            <button onClick={save} disabled={saving} className="flex-1 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase tracking-wider shadow-lg shadow-blue-900/20">
+                                {saving ? 'Syncing...' : 'Save Protocol'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // 1. NAVIGATION RAIL (Fixed Left, Scrollable Internally)
+        function NavRail({ sectors, onSelect, activeId, onCreateSector, onOpenSettings }) {
+            return (
+                <div className="w-[72px] h-full flex flex-col items-center py-4 gap-4 glass-panel z-30 flex-shrink-0">
+                    {/* Global Feed */}
+                    <div onClick={() => onSelect('global')} className={`flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center cursor-pointer transition-all duration-300 ${activeId === 'global' ? 'bg-blue-600 text-white shadow-[0_0_15px_#2563eb]' : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700'}`}>
                         <i className="fa-solid fa-earth-americas text-xl"></i>
                     </div>
 
-                    <div className="w-8 h-[1px] bg-slate-700/50"></div>
+                    <div className="w-8 h-[1px] bg-slate-700/50 flex-shrink-0"></div>
 
-                    {/* Sectors List */}
-                    <div className="flex-1 flex flex-col gap-3 overflow-y-auto scroll-hide w-full items-center">
+                    {/* Scrollable Sector List */}
+                    <div className="flex-1 w-full overflow-y-auto scroll-hide flex flex-col items-center gap-3 min-h-0">
                         {sectors.map(sector => (
-                            <div key={sector.id} onClick={() => onSelect(sector.id)} className="relative group w-12 h-12">
+                            <div key={sector.id} onClick={() => onSelect(sector.id)} className="relative group w-12 h-12 flex-shrink-0">
                                 <div className={`w-full h-full rounded-2xl flex items-center justify-center cursor-pointer transition-all duration-300 overflow-hidden border ${activeId === sector.id ? 'border-blue-500' : 'border-transparent group-hover:border-slate-600'}`}>
-                                    {sector.icon ? <img src={sector.icon} className="w-full h-full object-cover" /> : <div className="bg-slate-800 w-full h-full flex items-center justify-center text-xs font-bold">{sector.name[0]}</div>}
-                                </div>
-                                {/* Tooltip */}
-                                <div className="absolute left-14 top-2 bg-black/90 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none z-50 border border-slate-700 uppercase tracking-wider">
-                                    {sector.name}
+                                    {sector.icon ? <img src={sector.icon} className="w-full h-full object-cover" /> : <div className="bg-slate-800 w-full h-full flex items-center justify-center text-xs font-bold text-white">{sector.name[0]}</div>}
                                 </div>
                             </div>
                         ))}
                         
                         {/* Add Sector */}
-                        <div onClick={onCreateSector} className="w-12 h-12 rounded-2xl bg-slate-800/30 border border-dashed border-slate-600 text-slate-500 hover:text-green-400 hover:border-green-400 flex items-center justify-center cursor-pointer transition">
+                        <div onClick={onCreateSector} className="flex-shrink-0 w-12 h-12 rounded-2xl bg-slate-800/30 border border-dashed border-slate-600 text-slate-500 hover:text-green-400 hover:border-green-400 flex items-center justify-center cursor-pointer transition">
                             <i className="fa-solid fa-plus"></i>
                         </div>
                     </div>
 
-                    {/* DMs / Profile */}
-                    <div onClick={() => onSelect('dms')} className={`w-12 h-12 rounded-full mt-auto flex items-center justify-center cursor-pointer transition ${activeId === 'dms' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
-                        <i className="fa-solid fa-inbox"></i>
+                    {/* Bottom Fixed Items */}
+                    <div className="mt-auto flex flex-col gap-3 items-center flex-shrink-0">
+                        <div onClick={() => onSelect('dms')} className={`w-12 h-12 rounded-full flex items-center justify-center cursor-pointer transition ${activeId === 'dms' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}>
+                            <i className="fa-solid fa-inbox"></i>
+                        </div>
+                        <div onClick={onOpenSettings} className="w-10 h-10 rounded-full flex items-center justify-center cursor-pointer text-slate-500 hover:text-white hover:bg-slate-800 transition">
+                            <i className="fa-solid fa-gear"></i>
+                        </div>
                     </div>
                 </div>
             );
         }
 
-        // 2. CONTEXT SIDEBAR (Middle)
+        // 2. CONTEXT SIDEBAR (Middle Fixed, Scrollable Internally)
         function ContextSidebar({ activeSector, user, onChannelSelect, activeChannel, onCreateChannel }) {
-            if (!activeSector) return null; // Should not happen
+            if (!activeSector) return null;
 
-            // If Global or DMs
-            if (activeSector === 'global' || activeSector === 'dms') {
-                return (
-                    <div className="w-60 bg-[#0a0f16] flex flex-col border-r border-slate-800/50 z-20">
-                         <div className="p-4 border-b border-slate-800/50 h-16 flex items-center">
-                            <h2 className="font-bold text-lg text-white tracking-wide">
-                                {activeSector === 'global' ? "GLOBAL FEED" : "DIRECT UPLINKS"}
-                            </h2>
-                        </div>
-                        <div className="p-4 text-sm text-slate-500 text-center mt-10">
-                            {activeSector === 'global' ? "Connected to Public Relay" : "Encrypted P2P Channels"}
-                        </div>
-                    </div>
-                );
-            }
+            // Global/DM Header Logic
+            const title = activeSector === 'global' ? "GLOBAL FEED" : (activeSector === 'dms' ? "DIRECT UPLINKS" : activeSector.name);
+            const subtitle = activeSector === 'global' ? "Public Relay" : (activeSector === 'dms' ? "Encrypted Channels" : "Secure Sector");
 
-            // If Sector (Community)
             return (
-                <div className="w-60 bg-[#0a0f16] flex flex-col border-r border-slate-800/50 z-20">
-                    <div className="p-4 border-b border-slate-800/50 h-16 flex items-center justify-between">
-                        <h2 className="font-bold text-white truncate pr-2">{activeSector.name}</h2>
-                        <i className="fa-solid fa-shield-halved text-blue-500/50 text-xs"></i>
+                <div className="w-60 h-full bg-[#0a0f16] flex flex-col border-r border-slate-800/50 z-20 flex-shrink-0">
+                    {/* Fixed Header */}
+                    <div className="p-4 border-b border-slate-800/50 h-16 flex flex-col justify-center flex-shrink-0">
+                        <h2 className="font-bold text-white truncate text-sm tracking-wider">{title}</h2>
+                        <p className="text-[10px] text-slate-500 uppercase">{subtitle}</p>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-3 space-y-6">
-                        {/* Categories */}
-                        {['text', 'voice', 'forum'].map(type => {
-                            const channels = activeSector.channels?.filter(c => c.type === type) || [];
-                            const icon = type === 'text' ? 'fa-hashtag' : (type === 'voice' ? 'fa-microphone-lines' : 'fa-layer-group');
-                            const label = type === 'text' ? 'COMM CHANNELS' : (type === 'voice' ? 'AUDIO LINKS' : 'DATA DROPS');
-                            
-                            return (
-                                <div key={type}>
-                                    <div className="flex items-center justify-between px-2 mb-1 group">
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-slate-300">{label}</span>
-                                        <button onClick={() => onCreateChannel(type)} className="text-slate-600 hover:text-white opacity-0 group-hover:opacity-100 transition"><i className="fa-solid fa-plus text-[10px]"></i></button>
-                                    </div>
-                                    <div className="space-y-0.5">
-                                        {channels.map(ch => (
-                                            <div key={ch.id} onClick={() => onChannelSelect(ch)} 
-                                                className={`px-2 py-1.5 rounded cursor-pointer flex items-center gap-2 text-sm transition ${activeChannel?.id === ch.id ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-300'}`}>
-                                                <i className={`fa-solid ${icon} text-xs opacity-50`}></i>
-                                                <span className="truncate">{ch.name}</span>
+                    {/* Scrollable List */}
+                    <div className="flex-1 overflow-y-auto p-3 space-y-6 min-h-0">
+                        {(activeSector === 'global' || activeSector === 'dms') ? (
+                            <div className="text-center mt-10 opacity-30">
+                                <i className={`fa-solid ${activeSector === 'global' ? 'fa-globe' : 'fa-comments'} text-4xl mb-2`}></i>
+                                <p className="text-xs">System Active</p>
+                            </div>
+                        ) : (
+                            <>
+                                {['text', 'voice', 'forum'].map(type => {
+                                    const channels = activeSector.channels?.filter(c => c.type === type) || [];
+                                    const icon = type === 'text' ? 'fa-hashtag' : (type === 'voice' ? 'fa-microphone-lines' : 'fa-layer-group');
+                                    const label = type === 'text' ? 'COMM CHANNELS' : (type === 'voice' ? 'AUDIO LINKS' : 'DATA DROPS');
+                                    
+                                    return (
+                                        <div key={type}>
+                                            <div className="flex items-center justify-between px-2 mb-1 group">
+                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest group-hover:text-slate-300 transition">{label}</span>
+                                                <button onClick={() => onCreateChannel(type)} className="text-slate-600 hover:text-white opacity-0 group-hover:opacity-100 transition"><i className="fa-solid fa-plus text-[10px]"></i></button>
                                             </div>
-                                        ))}
-                                        {channels.length === 0 && <div className="px-2 text-[10px] text-slate-700 italic">No wavelengths active</div>}
-                                    </div>
-                                </div>
-                            );
-                        })}
+                                            <div className="space-y-0.5">
+                                                {channels.map(ch => (
+                                                    <div key={ch.id} onClick={() => onChannelSelect(ch)} 
+                                                        className={`px-2 py-1.5 rounded cursor-pointer flex items-center gap-2 text-sm transition ${activeChannel?.id === ch.id ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-300'}`}>
+                                                        <i className={`fa-solid ${icon} text-xs opacity-50 w-4 text-center`}></i>
+                                                        <span className="truncate">{ch.name}</span>
+                                                    </div>
+                                                ))}
+                                                {channels.length === 0 && <div className="px-2 text-[10px] text-slate-800 italic">No wavelengths active</div>}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </>
+                        )}
                     </div>
                 </div>
             );
         }
 
-        // 3. MAIN STAGE (Right)
+        // 3. MAIN STAGE (Fluid Width, Internal Scroll)
         function MainStage({ channel, user, db }) {
             const [posts, setPosts] = useState([]);
             const [messages, setMessages] = useState([]);
             const [text, setText] = useState("");
             const bottomRef = useRef();
 
-            // Listen for Content
+            // NOTIFICATION LISTENER
             useEffect(() => {
                 if (!channel) return;
 
-                // Path logic
                 let ref;
+                // Determine Collection Path
                 if (channel.type === 'global') ref = db.collection('messages');
                 else if (channel.sectorId) {
-                    // Inside a sector
                     if(channel.type === 'forum') ref = db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('posts');
                     else ref = db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('messages');
                 }
@@ -176,6 +285,25 @@
 
                 const unsub = ref.orderBy('timestamp', 'asc').limitToLast(50).onSnapshot(snap => {
                     const data = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                    
+                    // Handle Notifications for NEW messages (excluding own)
+                    snap.docChanges().forEach(change => {
+                        if (change.type === 'added') {
+                            const msg = change.doc.data();
+                            // Only notify if msg is from someone else AND timestamp is recent (avoid notify bomb on load)
+                            const isRecent = msg.timestamp && (Date.now() - msg.timestamp.toMillis() < 10000);
+                            
+                            if (isRecent && msg.uid !== user.uid && Notification.permission === 'granted') {
+                                // Check local storage for permission (simple version) or DB
+                                // For now, just fire if permission granted
+                                new Notification(`Omni-Link: ${msg.displayName}`, {
+                                    body: msg.text || "Incoming Image Transmission",
+                                    icon: msg.photoURL || "https://cdn-icons-png.flaticon.com/512/2583/2583276.png"
+                                });
+                            }
+                        }
+                    });
+
                     if (channel.type === 'forum') setPosts(data);
                     else setMessages(data);
                     
@@ -196,140 +324,128 @@
                 if (channel.type === 'global') await db.collection('messages').add(payload);
                 else if (channel.sectorId) {
                      if (channel.type === 'forum') {
-                        // Creating a Post
                          await db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('posts').add({
                              ...payload, title: text.split('\n')[0].substring(0, 50), body: text
                          });
                      } else {
-                         // Standard Chat
                          await db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('messages').add(payload);
                      }
                 }
                 setText("");
             };
 
-            // RENDER: FORUM VIEW
+            // 3A. FORUM VIEW
             if (channel?.type === 'forum') {
                 return (
-                    <div className="flex-1 bg-black/20 flex flex-col relative h-full">
-                        <header className="h-16 border-b border-slate-800/50 flex items-center px-6 glass-panel z-10">
+                    <div className="flex-1 bg-black/20 flex flex-col relative h-full min-w-0">
+                        <header className="h-16 border-b border-slate-800/50 flex-shrink-0 flex items-center px-6 glass-panel z-10">
                             <i className="fa-solid fa-layer-group text-purple-500 mr-3"></i>
                             <div>
-                                <h1 className="font-bold text-white uppercase tracking-wider">{channel.name}</h1>
+                                <h1 className="font-bold text-white uppercase tracking-wider text-sm md:text-base">{channel.name}</h1>
                                 <p className="text-[10px] text-slate-500">Secure Data Repository</p>
                             </div>
                         </header>
                         
-                        <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 content-start">
-                            {/* Create Post Card */}
-                            <div className="glass-item p-6 rounded-xl border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 transition group" onClick={() => {
-                                const t = prompt("Data Packet Header (Title):");
-                                if(t) {
-                                    const b = prompt("Packet Content:");
-                                    if(b) {
-                                        db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('posts').add({
-                                            title: t, body: b, uid: user.uid, displayName: user.displayName,
-                                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
-                                        });
+                        <div className="flex-1 overflow-y-auto p-6 min-h-0">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div className="glass-item p-6 rounded-xl border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 transition group h-40" onClick={() => {
+                                    const t = prompt("Data Packet Header (Title):");
+                                    if(t) {
+                                        const b = prompt("Packet Content:");
+                                        if(b) {
+                                            db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('posts').add({
+                                                title: t, body: b, uid: user.uid, displayName: user.displayName,
+                                                timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                                            });
+                                        }
                                     }
-                                }
-                            }}>
-                                <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center group-hover:bg-blue-600 transition mb-3">
-                                    <i className="fa-solid fa-plus text-white"></i>
+                                }}>
+                                    <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center group-hover:bg-blue-600 transition mb-2">
+                                        <i className="fa-solid fa-plus text-white"></i>
+                                    </div>
+                                    <p className="text-xs font-bold text-slate-400">New Data Packet</p>
                                 </div>
-                                <p className="text-sm font-bold text-slate-400">Upload Data Packet</p>
-                            </div>
 
-                            {/* Posts */}
-                            {posts.map(post => (
-                                <div key={post.id} className="glass-panel p-5 rounded-xl flex flex-col hover:shadow-[0_0_20px_rgba(59,130,246,0.1)] transition anim-fade">
-                                    <div className="flex items-center gap-2 mb-3">
-                                        <div className="w-6 h-6 rounded bg-slate-700 flex items-center justify-center text-[10px]">{post.displayName?.[0]}</div>
-                                        <span className="text-xs text-slate-400">{post.displayName}</span>
+                                {posts.map(post => (
+                                    <div key={post.id} className="glass-panel p-5 rounded-xl flex flex-col hover:shadow-[0_0_20px_rgba(59,130,246,0.1)] transition anim-fade h-auto">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className="text-xs text-blue-400 font-bold truncate">{post.displayName}</span>
+                                        </div>
+                                        <h3 className="font-bold text-white text-sm mb-1 truncate">{post.title}</h3>
+                                        <p className="text-xs text-slate-400 line-clamp-3 mb-3">{post.body}</p>
                                     </div>
-                                    <h3 className="font-bold text-white text-lg mb-2">{post.title}</h3>
-                                    <p className="text-sm text-slate-300 line-clamp-3 mb-4">{post.body}</p>
-                                    <div className="mt-auto pt-3 border-t border-slate-800 flex justify-between items-center text-xs text-slate-500">
-                                        <span><i className="fa-solid fa-clock mr-1"></i> Recent</span>
-                                        <button className="hover:text-blue-400"><i className="fa-solid fa-comments"></i> Access</button>
-                                    </div>
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </div>
                     </div>
                 );
             }
 
-            // RENDER: VOICE LOBBY
+            // 3B. VOICE VIEW
             if (channel?.type === 'voice') {
                 return (
-                    <div className="flex-1 bg-black/20 flex flex-col relative h-full">
-                        <header className="h-16 border-b border-slate-800/50 flex items-center px-6 glass-panel z-10">
+                    <div className="flex-1 bg-black/20 flex flex-col relative h-full min-w-0">
+                        <header className="h-16 border-b border-slate-800/50 flex-shrink-0 flex items-center px-6 glass-panel z-10">
                             <i className="fa-solid fa-microphone-lines text-green-500 mr-3"></i>
                             <h1 className="font-bold text-white uppercase tracking-wider">{channel.name}</h1>
                         </header>
-                        <div className="flex-1 flex flex-col items-center justify-center p-10">
-                            <div className="w-32 h-32 rounded-full border-2 border-green-500/30 flex items-center justify-center relative mb-8">
-                                <i className="fa-solid fa-tower-broadcast text-4xl text-green-500"></i>
+                        <div className="flex-1 flex flex-col items-center justify-center p-4 text-center min-h-0">
+                            <div className="w-24 h-24 rounded-full border-2 border-green-500/30 flex items-center justify-center relative mb-6">
+                                <i className="fa-solid fa-tower-broadcast text-3xl text-green-500"></i>
                                 <div className="absolute inset-0 rounded-full border border-green-500 animate-ping opacity-20"></div>
                             </div>
-                            <h2 className="text-2xl font-bold text-white mb-2">Neural Link Active</h2>
-                            <p className="text-slate-400 max-w-md text-center mb-8">You are connected to the audio lobby. Other operatives in this wavelength can see your signal.</p>
-                            <div className="flex -space-x-4">
-                                {/* Mock Users in Lobby */}
-                                <div className="w-12 h-12 rounded-full border-2 border-black bg-slate-700 flex items-center justify-center" title={user.displayName}>{user.displayName?.[0]}</div>
-                            </div>
-                            <div className="mt-10 p-4 bg-green-900/10 border border-green-500/20 rounded-lg text-green-400 text-sm">
-                                <i className="fa-solid fa-wifi mr-2"></i> Signal Strength: 100%
+                            <h2 className="text-xl font-bold text-white mb-2">Neural Link Active</h2>
+                            <p className="text-slate-400 text-xs max-w-xs mb-8">Audio channel open. Transmitting on secure frequency.</p>
+                            <div className="flex -space-x-3">
+                                <div className="w-10 h-10 rounded-full border-2 border-black bg-slate-700 flex items-center justify-center text-xs text-white" title={user.displayName}>{user.displayName?.[0]}</div>
                             </div>
                         </div>
                     </div>
                 );
             }
 
-            // RENDER: DEFAULT CHAT (Text & Global)
+            // 3C. TEXT VIEW
             return (
-                <div className="flex-1 bg-black/20 flex flex-col relative h-full">
+                <div className="flex-1 bg-black/20 flex flex-col relative h-full min-w-0">
                     {/* Header */}
-                    <header className="h-16 border-b border-slate-800/50 flex items-center px-6 glass-panel z-10 justify-between">
-                        <div className="flex items-center">
+                    <header className="h-16 border-b border-slate-800/50 flex-shrink-0 flex items-center px-4 md:px-6 glass-panel z-10 justify-between">
+                        <div className="flex items-center min-w-0">
                             <i className={`fa-solid ${channel?.type==='global' ? 'fa-globe text-blue-500' : 'fa-hashtag text-slate-400'} mr-3`}></i>
-                            <div>
-                                <h1 className="font-bold text-white uppercase tracking-wider">{channel?.name || "Global Feed"}</h1>
-                                <p className="text-[10px] text-slate-500">{channel?.type==='global' ? "Public Relay" : "Secure Text Line"}</p>
+                            <div className="min-w-0">
+                                <h1 className="font-bold text-white uppercase tracking-wider text-sm truncate">{channel?.name || "Global Feed"}</h1>
+                                <p className="text-[10px] text-slate-500 truncate">{channel?.type==='global' ? "Public Relay" : "Secure Text Line"}</p>
                             </div>
                         </div>
-                        {channel?.type !== 'global' && <div className="text-slate-600 text-xs">ID: {channel?.id?.slice(0,4)}</div>}
                     </header>
 
-                    {/* Messages */}
-                    <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                    {/* Messages (Scrollable) */}
+                    <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 min-h-0">
                         {messages.map(msg => {
                             const isMe = msg.uid === user.uid;
                             return (
-                                <div key={msg.id} className={`flex gap-4 anim-fade ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                    {!isMe && <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center text-xs border border-slate-700 mt-1">{msg.displayName?.[0]}</div>}
-                                    <div className={`max-w-[70%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                <div key={msg.id} className={`flex gap-3 md:gap-4 anim-fade ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                    {!isMe && <div className="w-8 h-8 rounded bg-slate-800 flex-shrink-0 flex items-center justify-center text-xs border border-slate-700 mt-1">{msg.displayName?.[0]}</div>}
+                                    <div className={`max-w-[80%] md:max-w-[70%] flex flex-col ${isMe ? 'items-end' : 'items-start'} min-w-0`}>
                                         <div className="flex items-center gap-2 mb-1">
-                                            <span className={`text-xs font-bold ${isMe ? 'text-blue-400' : 'text-slate-400'}`}>{msg.displayName}</span>
-                                            <span className="text-[9px] text-slate-600">{msg.timestamp?.toDate().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                                            <span className={`text-xs font-bold truncate ${isMe ? 'text-blue-400' : 'text-slate-400'}`}>{msg.displayName}</span>
+                                            <span className="text-[9px] text-slate-600 flex-shrink-0">{msg.timestamp?.toDate().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                                         </div>
-                                        <div className={`px-4 py-2 rounded-lg text-sm leading-relaxed ${isMe ? 'bg-blue-600/20 text-blue-50 border border-blue-500/30' : 'bg-slate-800/60 text-slate-300 border border-slate-700/50'}`}>
+                                        <div className={`px-4 py-2 rounded-lg text-sm leading-relaxed break-words w-full ${isMe ? 'bg-blue-600/20 text-blue-50 border border-blue-500/30' : 'bg-slate-800/60 text-slate-300 border border-slate-700/50'}`}>
                                             {msg.text}
                                         </div>
                                     </div>
-                                    {isMe && <div className="w-8 h-8 rounded bg-blue-900/30 flex items-center justify-center text-xs border border-blue-500/30 mt-1">{msg.displayName?.[0]}</div>}
+                                    {isMe && <div className="w-8 h-8 rounded bg-blue-900/30 flex-shrink-0 flex items-center justify-center text-xs border border-blue-500/30 mt-1">{msg.displayName?.[0]}</div>}
                                 </div>
                             );
                         })}
                         <div ref={bottomRef}></div>
                     </div>
 
-                    {/* Input */}
-                    <div className="p-4 bg-black/40 border-t border-slate-800/50">
-                        <form onSubmit={sendMessage} className="relative">
-                            <input value={text} onChange={e=>setText(e.target.value)} placeholder={`Transmission to ${channel?.name || "channel"}...`} 
-                                className="w-full bg-slate-900/50 border border-slate-700 rounded-lg pl-4 pr-12 py-3 text-white focus:border-blue-500 outline-none transition font-light placeholder-slate-600" />
+                    {/* Input (Fixed Bottom) */}
+                    <div className="p-4 bg-black/40 border-t border-slate-800/50 flex-shrink-0">
+                        <form onSubmit={sendMessage} className="relative max-w-full">
+                            <input value={text} onChange={e=>setText(e.target.value)} placeholder={`Transmission...`} 
+                                className="w-full bg-slate-900/50 border border-slate-700 rounded-lg pl-4 pr-12 py-3 text-white focus:border-blue-500 outline-none transition font-light placeholder-slate-600 text-sm" />
                             <button type="submit" className="absolute right-2 top-2 p-1.5 text-slate-400 hover:text-blue-400 transition"><i className="fa-solid fa-paper-plane"></i></button>
                         </form>
                     </div>
@@ -342,14 +458,12 @@
             const [sectors, setSectors] = useState([]);
             const [activeSectorId, setActiveSectorId] = useState('global');
             const [activeChannel, setActiveChannel] = useState({ id: 'global', type: 'global', name: 'Global Feed' });
+            const [showSettings, setShowSettings] = useState(false);
             
-            // Initial Auth
             useEffect(() => auth.onAuthStateChanged(setUser), []);
 
-            // Load Sectors (Communities)
             useEffect(() => {
                 if(!user) return;
-                // For demo, we just load ALL sectors. In prod, you'd filter by members array.
                 const unsub = db.collection('sectors').onSnapshot(snap => {
                     const data = snap.docs.map(d => ({id: d.id, ...d.data()}));
                     setSectors(data);
@@ -357,26 +471,22 @@
                 return unsub;
             }, [user]);
 
-            // When Sector changes, select default channel
             useEffect(() => {
                 if(activeSectorId === 'global') {
                     setActiveChannel({ id: 'global', type: 'global', name: 'Global Feed' });
                 } else if (activeSectorId === 'dms') {
                      setActiveChannel({ id: 'dm-home', type: 'dm', name: 'Direct Messages' });
                 } else {
-                    // Find first channel of sector
                     const sector = sectors.find(s => s.id === activeSectorId);
                     if(sector && sector.channels && sector.channels.length > 0) {
                         const first = sector.channels[0];
                         setActiveChannel({ ...first, sectorId: sector.id });
                     } else if (sector) {
-                        // No channels yet
                         setActiveChannel(null);
                     }
                 }
             }, [activeSectorId, sectors]);
 
-            // Actions
             const handleCreateSector = () => {
                 const name = prompt("Designate Sector Name:");
                 if(name) {
@@ -398,23 +508,23 @@
             };
 
             if (!user) return (
-                 <div className="h-screen flex items-center justify-center bg-black">
+                 <div className="h-full flex items-center justify-center bg-black">
                     <button onClick={() => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())} className="glass-panel px-10 py-5 rounded-2xl text-white font-bold uppercase tracking-[0.2em] border border-blue-500/30 hover:bg-blue-600/20 hover:scale-105 transition shadow-[0_0_50px_rgba(37,99,235,0.2)]">
                          <i className="fa-brands fa-google mr-3"></i> Initialize Uplink
                     </button>
                 </div>
             );
 
-            // Derived State for UI
             const activeSectorData = sectors.find(s => s.id === activeSectorId);
 
             return (
-                <div className="flex h-screen w-full overflow-hidden">
+                <div className="flex h-full w-full overflow-hidden">
                     <NavRail 
                         sectors={sectors} 
                         activeId={activeSectorId} 
                         onSelect={setActiveSectorId} 
                         onCreateSector={handleCreateSector} 
+                        onOpenSettings={() => setShowSettings(true)}
                     />
                     
                     <ContextSidebar 
@@ -426,6 +536,8 @@
                     />
 
                     <MainStage channel={activeChannel} user={user} db={db} />
+                    
+                    {showSettings && <SettingsModal user={user} onClose={() => setShowSettings(false)} />}
                 </div>
             );
         }
