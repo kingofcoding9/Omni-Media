@@ -36,10 +36,20 @@
                         'cyber-blue': '#00f0ff',
                         'cyber-red': '#ff2a2a',
                         'cyber-green': '#00ff9d',
+                        'discord': '#5865F2',
                     },
                     fontFamily: {
                         sans: ['"Rajdhani"', 'sans-serif'],
                         mono: ['"Share Tech Mono"', 'monospace'],
+                    },
+                    animation: {
+                        'pulse-glow': 'pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    },
+                    keyframes: {
+                        'pulse-glow': {
+                            '0%, 100%': { opacity: 1, boxShadow: '0 0 10px #5865F2' },
+                            '50%': { opacity: .8, boxShadow: '0 0 25px #5865F2' },
+                        }
                     }
                 }
             }
@@ -72,6 +82,13 @@
             content: ''; position: absolute; bottom: 0; right: 0; 
             width: 8px; height: 8px; 
             border-bottom: 2px solid #00f0ff; border-right: 2px solid #00f0ff; 
+        }
+
+        .epic-glow {
+            box-shadow: 0 0 15px rgba(88, 101, 242, 0.3), inset 0 0 20px rgba(88, 101, 242, 0.1);
+        }
+        .epic-glow:hover {
+            box-shadow: 0 0 30px rgba(88, 101, 242, 0.6), inset 0 0 30px rgba(88, 101, 242, 0.2);
         }
         
         /* UTILS */
@@ -162,8 +179,9 @@
         });
 
         // --- SECTOR MAP (MODAL) ---
-        const SectorMap = ({ sectors, onSelect, onClose, user, onCreateSector, onDeleteSector }) => {
-            const mySectors = sectors.filter(s => s.id === 'global' || (s.members && s.members.includes(user.uid)) || s.ownerId === user.uid || s.isPublic);
+        const SectorMap = ({ sectors, onSelect, onClose, user, onCreateSector, onDeleteSector, onGlobal }) => {
+            // Filter out 'global' from the regular list since we have a special button for it
+            const mySectors = sectors.filter(s => s.id !== 'global' && ((s.members && s.members.includes(user.uid)) || s.ownerId === user.uid || s.isPublic));
             const [code, setCode] = useState("");
 
             const handleJoin = () => {
@@ -174,8 +192,8 @@
             };
 
             return (
-                <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur flex items-center justify-center p-4">
-                    <div className="w-full max-w-4xl h-[80vh] cyber-border bg-[#050a14] flex flex-col p-6 relative anim-fade">
+                <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur flex items-center justify-center p-4">
+                    <div className="w-full max-w-4xl h-[85vh] cyber-border bg-[#050a14] flex flex-col p-6 relative anim-fade">
                         <button onClick={onClose} className="absolute top-4 right-4 text-red-500 hover:text-white"><i className="fa-solid fa-xmark text-2xl"></i></button>
                         
                         <div className="mb-6 border-b border-slate-800 pb-4">
@@ -183,37 +201,67 @@
                             <p className="text-cyber-blue font-mono text-xs">SELECT DESTINATION</p>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
-                            {mySectors.map(s => {
-                                const isOwner = s.ownerId === user.uid && s.id !== 'global';
-                                return (
-                                    <div key={s.id} onClick={() => onSelect(s.id)} className="group h-32 border border-slate-800 bg-[#0f172a] hover:border-cyber-blue hover:bg-[#1e293b] cursor-pointer transition p-4 flex flex-col justify-between relative overflow-hidden">
-                                        <div className="absolute top-0 right-0 p-2 opacity-50 text-[10px] font-mono">{s.id.slice(0,4)}</div>
-                                        {isOwner && (
-                                            <button onClick={(e) => { e.stopPropagation(); onDeleteSector(s.id); }} className="absolute bottom-2 right-2 text-red-500 hover:bg-red-900/30 w-6 h-6 flex items-center justify-center rounded z-10 opacity-0 group-hover:opacity-100 transition">
-                                                <i className="fa-solid fa-trash text-xs"></i>
-                                            </button>
-                                        )}
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-black border border-slate-700 flex items-center justify-center font-bold text-gray-500 group-hover:text-cyber-blue group-hover:border-cyber-blue transition">
-                                                {s.name[0]}
-                                            </div>
-                                            <div>
-                                                <h3 className="font-bold text-lg text-white group-hover:text-cyber-blue leading-tight truncate w-32">{s.name}</h3>
-                                                <p className="text-[10px] text-gray-500 uppercase">{s.id === 'global' ? 'Public Hub' : 'Secure'}</p>
-                                            </div>
-                                        </div>
-                                        <div className="w-full h-1 bg-slate-800 mt-2 group-hover:bg-cyber-blue transition-colors"></div>
+                        <div className="flex-1 overflow-y-auto custom-scroll pb-4">
+                            
+                            {/* --- THE EPIC GLOBAL UPLINK BUTTON --- */}
+                            <div onClick={onGlobal} className="w-full h-32 mb-8 relative group cursor-pointer border border-discord bg-discord/10 overflow-hidden rounded-lg epic-glow transition-all transform hover:scale-[1.01]">
+                                <div className="absolute inset-0 bg-discord/5 group-hover:bg-discord/20 transition"></div>
+                                {/* Animated Grid Background */}
+                                <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'linear-gradient(#5865F2 1px, transparent 1px), linear-gradient(90deg, #5865F2 1px, transparent 1px)', backgroundSize: '30px 30px'}}></div>
+                                
+                                <div className="relative z-10 flex items-center h-full px-8 gap-6">
+                                    <div className="w-16 h-16 bg-discord rounded-2xl flex items-center justify-center shadow-lg shadow-discord/50 animate-pulse-glow">
+                                        <i className="fa-brands fa-discord text-4xl text-white"></i>
                                     </div>
-                                );
-                            })}
-                            <div onClick={onCreateSector} className="h-32 border border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-cyber-green hover:text-cyber-green transition text-gray-600 gap-2">
-                                <i className="fa-solid fa-plus text-xl"></i>
-                                <span className="text-xs font-mono">ESTABLISH SECTOR</span>
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-white tracking-wider font-sans">GLOBAL DISCORD UPLINK</h2>
+                                        <p className="text-discord text-xs font-mono uppercase tracking-widest">Connect to Omni-Science Hub Public Frequency</p>
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                            <span className="text-[10px] text-green-400 font-mono">LIVE FEED ACTIVE</span>
+                                        </div>
+                                    </div>
+                                    <div className="ml-auto opacity-50 group-hover:opacity-100 group-hover:translate-x-2 transition transform">
+                                        <i className="fa-solid fa-chevron-right text-4xl text-discord"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            {/* --------------------------------------- */}
+
+                            <h3 className="text-xs font-mono text-gray-500 mb-4 uppercase tracking-widest border-b border-slate-800 pb-1 w-full">Personal Sectors</h3>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {mySectors.map(s => {
+                                    const isOwner = s.ownerId === user.uid;
+                                    return (
+                                        <div key={s.id} onClick={() => onSelect(s.id)} className="group h-32 border border-slate-800 bg-[#0f172a] hover:border-cyber-blue hover:bg-[#1e293b] cursor-pointer transition p-4 flex flex-col justify-between relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 p-2 opacity-50 text-[10px] font-mono">{s.id.slice(0,4)}</div>
+                                            {isOwner && (
+                                                <button onClick={(e) => { e.stopPropagation(); onDeleteSector(s.id); }} className="absolute bottom-2 right-2 text-red-500 hover:bg-red-900/30 w-6 h-6 flex items-center justify-center rounded z-10 opacity-0 group-hover:opacity-100 transition">
+                                                    <i className="fa-solid fa-trash text-xs"></i>
+                                                </button>
+                                            )}
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 bg-black border border-slate-700 flex items-center justify-center font-bold text-gray-500 group-hover:text-cyber-blue group-hover:border-cyber-blue transition">
+                                                    {s.name[0]}
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-bold text-lg text-white group-hover:text-cyber-blue leading-tight truncate w-32">{s.name}</h3>
+                                                    <p className="text-[10px] text-gray-500 uppercase">Secure Node</p>
+                                                </div>
+                                            </div>
+                                            <div className="w-full h-1 bg-slate-800 mt-2 group-hover:bg-cyber-blue transition-colors"></div>
+                                        </div>
+                                    );
+                                })}
+                                <div onClick={onCreateSector} className="h-32 border border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-cyber-green hover:text-cyber-green transition text-gray-600 gap-2">
+                                    <i className="fa-solid fa-plus text-xl"></i>
+                                    <span className="text-xs font-mono">ESTABLISH SECTOR</span>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="mt-4 pt-4 border-t border-slate-800 flex flex-col md:flex-row gap-4 items-center justify-center">
+                        <div className="mt-4 pt-4 border-t border-slate-800 flex flex-col md:flex-row gap-4 items-center justify-center bg-[#050a14] sticky bottom-0 z-20">
                             <span className="font-mono text-xs text-gray-500">SECURE UPLINK:</span>
                             <div className="flex w-full md:w-auto">
                                 <input value={code} onChange={e=>setCode(e.target.value)} placeholder="ENTER CODE" className="bg-black border border-slate-700 text-white px-3 py-2 text-sm font-mono w-full focus:border-cyber-blue outline-none" />
@@ -368,12 +416,6 @@
                                 <p className="text-[10px] text-cyber-blue font-mono truncate">{channel ? `// ${channel.name}` : '// OFFLINE'}</p>
                             </div>
                         </div>
-                        
-                        {/* GLOBAL UPLINK BUTTON */}
-                        <button onClick={onGlobal} className="flex-shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded flex items-center gap-2 text-xs font-bold border border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.5)] transition">
-                            <i className="fa-brands fa-discord"></i>
-                            <span className="hidden sm:inline">GLOBAL UPLINK</span>
-                        </button>
                     </div>
 
                     {/* Messages */}
@@ -428,7 +470,7 @@
             const [activeSectorId, setActiveSectorId] = useState('global');
             const [activeChannel, setActiveChannel] = useState(null);
             const [isMapOpen, setIsMapOpen] = useState(false);
-            const [systemsOpen, setSystemsOpen] = useState(false); // Mobile drawer state
+            const [systemsOpen, setSystemsOpen] = useState(false);
             const [targetProfile, setTargetProfile] = useState(null);
 
             useEffect(() => {
@@ -466,6 +508,12 @@
                 if(global) {
                     setActiveSectorId('global');
                     if(global.channels && global.channels[0]) setActiveChannel(global.channels[0]);
+                    // CRITICAL: Close navigation elements so user sees the change
+                    setIsMapOpen(false);
+                    setSystemsOpen(false);
+                } else {
+                    alert("Uplink Offline. Resyncing...");
+                    socket.emit('request_sync');
                 }
             };
 
@@ -494,6 +542,7 @@
                         onClose={() => setIsMapOpen(false)} 
                         onCreateSector={handleCreateSector}
                         onDeleteSector={handleDeleteSector}
+                        onGlobal={switchToGlobal}
                     />}
 
                     {/* Left Sidebar (Systems) */}
