@@ -3,58 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Omni-Media Hub</title>
+    <title>Omni-OS v3.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Fonts & Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Firebase SDKs -->
+    <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
     <style>
+        :root { --neon-blue: #3b82f6; --neon-cyan: #06b6d4; --bg-dark: #050505; --glass: rgba(15, 23, 42, 0.7); }
         body { 
-            background-color: #050505; 
-            color: #e0e0e0; 
-            font-family: 'Exo 2', sans-serif;
-            background-image: 
-                linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
-                url("https://www.transparenttextures.com/patterns/cubes.png"),
-                radial-gradient(circle at 15% 50%, rgba(20, 30, 255, 0.15) 0%, transparent 40%), 
-                radial-gradient(circle at 85% 30%, rgba(255, 20, 20, 0.1) 0%, transparent 40%);
-            height: 100vh;
-            overflow: hidden;
+            background-color: var(--bg-dark); color: #e0e0e0; font-family: 'Exo 2', sans-serif;
+            background-image: url("https://www.transparenttextures.com/patterns/dark-matter.png"), radial-gradient(circle at 50% 50%, #111827 0%, #000000 100%);
+            height: 100vh; overflow: hidden;
         }
-        .glass-panel {
-            background: rgba(15, 15, 20, 0.85);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
-        }
-        .message-anim { animation: slideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
-        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
-
-        .typing-dot { animation: typing 1.4s infinite ease-in-out both; }
-        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
-        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
-        @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+        .glass-panel { background: var(--glass); backdrop-filter: blur(20px); border-right: 1px solid rgba(255, 255, 255, 0.05); }
+        .glass-item { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .glass-item:hover { background: rgba(255, 255, 255, 0.08); border-color: rgba(59, 130, 246, 0.3); }
+        .active-nav { border-left: 3px solid #3b82f6; background: linear-gradient(90deg, rgba(59,130,246,0.1) 0%, transparent 100%); }
+        .scroll-hide::-webkit-scrollbar { display: none; }
+        .clip-hex { clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); }
+        .anim-fade { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- FIREBASE CONFIG ---
+        // --- CONFIG ---
         const firebaseConfig = {
             apiKey: "AIzaSyA6uWFyvcdPSSaM_TWz_aIytDXiw4JkO68",
             authDomain: "omni-science-hub.firebaseapp.com",
@@ -69,249 +52,285 @@
         const db = firebase.firestore();
         const { useState, useEffect, useRef } = React;
 
-        // --- UTILS ---
-        const formatTime = (timestamp) => {
-            if (!timestamp) return "";
-            const date = timestamp.toDate();
-            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        };
-
-        const compressImage = (file, maxWidth = 600, quality = 0.7) => {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = (e) => {
-                    const img = new Image();
-                    img.src = e.target.result;
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        const scaleSize = maxWidth / img.width;
-                        canvas.width = maxWidth;
-                        canvas.height = img.height * scaleSize;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        resolve(canvas.toDataURL('image/jpeg', quality));
-                    };
-                    img.onerror = reject;
-                };
-                reader.onerror = reject;
-            });
-        };
-
         // --- COMPONENTS ---
 
-        function Login() {
-            const handleGoogle = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
+        // 1. NAVIGATION RAIL (Far Left)
+        function NavRail({ sectors, onSelect, activeId, onCreateSector }) {
             return (
-                <div className="flex items-center justify-center min-h-screen relative p-4">
-                    <div className="glass-panel p-10 rounded-3xl border border-slate-700 shadow-2xl max-w-md w-full text-center space-y-8 relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500"></div>
-                        
-                        <div className="relative">
-                            <div className="w-20 h-20 bg-blue-600/20 rounded-full mx-auto flex items-center justify-center border border-blue-400/30 shadow-[0_0_30px_rgba(37,99,235,0.3)]">
-                                <i className="fa-solid fa-satellite-dish text-blue-400 text-3xl"></i>
-                            </div>
-                        </div>
-                        
-                        <div>
-                            <h1 className="text-4xl font-black text-white tracking-tight">OMNI<span className="text-blue-500">HUB</span></h1>
-                            <p className="text-slate-400 text-xs uppercase tracking-[0.3em] mt-2">Secure Uplink Terminal</p>
-                        </div>
+                <div className="w-[72px] flex-shrink-0 flex flex-col items-center py-4 gap-4 glass-panel z-30">
+                    {/* Home / Global */}
+                    <div onClick={() => onSelect('global')} className={`w-12 h-12 rounded-2xl flex items-center justify-center cursor-pointer transition-all duration-300 ${activeId === 'global' ? 'bg-blue-600 text-white shadow-[0_0_15px_#2563eb]' : 'bg-slate-800/50 text-slate-400 hover:bg-slate-700'}`}>
+                        <i className="fa-solid fa-earth-americas text-xl"></i>
+                    </div>
 
-                        <button onClick={handleGoogle} className="w-full py-4 bg-white text-black font-bold uppercase tracking-widest rounded-xl hover:bg-blue-50 hover:scale-[1.02] transition shadow-xl flex items-center justify-center gap-3">
-                            <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5"/>
-                            Authenticate
-                        </button>
+                    <div className="w-8 h-[1px] bg-slate-700/50"></div>
+
+                    {/* Sectors List */}
+                    <div className="flex-1 flex flex-col gap-3 overflow-y-auto scroll-hide w-full items-center">
+                        {sectors.map(sector => (
+                            <div key={sector.id} onClick={() => onSelect(sector.id)} className="relative group w-12 h-12">
+                                <div className={`w-full h-full rounded-2xl flex items-center justify-center cursor-pointer transition-all duration-300 overflow-hidden border ${activeId === sector.id ? 'border-blue-500' : 'border-transparent group-hover:border-slate-600'}`}>
+                                    {sector.icon ? <img src={sector.icon} className="w-full h-full object-cover" /> : <div className="bg-slate-800 w-full h-full flex items-center justify-center text-xs font-bold">{sector.name[0]}</div>}
+                                </div>
+                                {/* Tooltip */}
+                                <div className="absolute left-14 top-2 bg-black/90 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none z-50 border border-slate-700 uppercase tracking-wider">
+                                    {sector.name}
+                                </div>
+                            </div>
+                        ))}
+                        
+                        {/* Add Sector */}
+                        <div onClick={onCreateSector} className="w-12 h-12 rounded-2xl bg-slate-800/30 border border-dashed border-slate-600 text-slate-500 hover:text-green-400 hover:border-green-400 flex items-center justify-center cursor-pointer transition">
+                            <i className="fa-solid fa-plus"></i>
+                        </div>
+                    </div>
+
+                    {/* DMs / Profile */}
+                    <div onClick={() => onSelect('dms')} className={`w-12 h-12 rounded-full mt-auto flex items-center justify-center cursor-pointer transition ${activeId === 'dms' ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                        <i className="fa-solid fa-inbox"></i>
                     </div>
                 </div>
             );
         }
 
-        function ChatRoom({ user }) {
+        // 2. CONTEXT SIDEBAR (Middle)
+        function ContextSidebar({ activeSector, user, onChannelSelect, activeChannel, onCreateChannel }) {
+            if (!activeSector) return null; // Should not happen
+
+            // If Global or DMs
+            if (activeSector === 'global' || activeSector === 'dms') {
+                return (
+                    <div className="w-60 bg-[#0a0f16] flex flex-col border-r border-slate-800/50 z-20">
+                         <div className="p-4 border-b border-slate-800/50 h-16 flex items-center">
+                            <h2 className="font-bold text-lg text-white tracking-wide">
+                                {activeSector === 'global' ? "GLOBAL FEED" : "DIRECT UPLINKS"}
+                            </h2>
+                        </div>
+                        <div className="p-4 text-sm text-slate-500 text-center mt-10">
+                            {activeSector === 'global' ? "Connected to Public Relay" : "Encrypted P2P Channels"}
+                        </div>
+                    </div>
+                );
+            }
+
+            // If Sector (Community)
+            return (
+                <div className="w-60 bg-[#0a0f16] flex flex-col border-r border-slate-800/50 z-20">
+                    <div className="p-4 border-b border-slate-800/50 h-16 flex items-center justify-between">
+                        <h2 className="font-bold text-white truncate pr-2">{activeSector.name}</h2>
+                        <i className="fa-solid fa-shield-halved text-blue-500/50 text-xs"></i>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-3 space-y-6">
+                        {/* Categories */}
+                        {['text', 'voice', 'forum'].map(type => {
+                            const channels = activeSector.channels?.filter(c => c.type === type) || [];
+                            const icon = type === 'text' ? 'fa-hashtag' : (type === 'voice' ? 'fa-microphone-lines' : 'fa-layer-group');
+                            const label = type === 'text' ? 'COMM CHANNELS' : (type === 'voice' ? 'AUDIO LINKS' : 'DATA DROPS');
+                            
+                            return (
+                                <div key={type}>
+                                    <div className="flex items-center justify-between px-2 mb-1 group">
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest hover:text-slate-300">{label}</span>
+                                        <button onClick={() => onCreateChannel(type)} className="text-slate-600 hover:text-white opacity-0 group-hover:opacity-100 transition"><i className="fa-solid fa-plus text-[10px]"></i></button>
+                                    </div>
+                                    <div className="space-y-0.5">
+                                        {channels.map(ch => (
+                                            <div key={ch.id} onClick={() => onChannelSelect(ch)} 
+                                                className={`px-2 py-1.5 rounded cursor-pointer flex items-center gap-2 text-sm transition ${activeChannel?.id === ch.id ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-300'}`}>
+                                                <i className={`fa-solid ${icon} text-xs opacity-50`}></i>
+                                                <span className="truncate">{ch.name}</span>
+                                            </div>
+                                        ))}
+                                        {channels.length === 0 && <div className="px-2 text-[10px] text-slate-700 italic">No wavelengths active</div>}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
+        // 3. MAIN STAGE (Right)
+        function MainStage({ channel, user, db }) {
+            const [posts, setPosts] = useState([]);
             const [messages, setMessages] = useState([]);
             const [text, setText] = useState("");
-            const [sending, setSending] = useState(false);
-            const bottomRef = useRef(null);
-            const fileInputRef = useRef(null);
+            const bottomRef = useRef();
 
+            // Listen for Content
             useEffect(() => {
-                const unsub = db.collection("messages").orderBy("timestamp", "asc").limitToLast(60).onSnapshot(snap => {
-                    const msgs = snap.docs.map(d => ({id: d.id, ...d.data()}));
-                    setMessages(msgs);
-                    setTimeout(() => bottomRef.current?.scrollIntoView({behavior: 'smooth'}), 100);
+                if (!channel) return;
+
+                // Path logic
+                let ref;
+                if (channel.type === 'global') ref = db.collection('messages');
+                else if (channel.sectorId) {
+                    // Inside a sector
+                    if(channel.type === 'forum') ref = db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('posts');
+                    else ref = db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('messages');
+                }
+
+                if(!ref) return;
+
+                const unsub = ref.orderBy('timestamp', 'asc').limitToLast(50).onSnapshot(snap => {
+                    const data = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                    if (channel.type === 'forum') setPosts(data);
+                    else setMessages(data);
+                    
+                    if(channel.type !== 'forum') setTimeout(() => bottomRef.current?.scrollIntoView({behavior: 'smooth'}), 100);
                 });
                 return unsub;
-            }, []);
+            }, [channel]);
 
             const sendMessage = async (e) => {
                 e.preventDefault();
                 if (!text.trim()) return;
-                setSending(true);
-                try {
-                    await db.collection("messages").add({
-                        text, 
-                        uid: user.uid, 
-                        displayName: user.displayName || "Omni-User",
-                        photoURL: user.photoURL || "", 
-                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                        platform: "Web"
-                    });
-                    setText("");
-                } catch(err) { console.error(err); }
-                setSending(false);
-            };
-
-            const handleImageUpload = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
                 
-                // 1. Show preview instantly (optimistic UI could be added here, but we'll wait for DB)
-                setSending(true);
-                try {
-                    // 2. Compress Image
-                    const base64 = await compressImage(file, 400, 0.7); // 400px width limit for Base64 safety
-                    
-                    // 3. Send as message
-                    await db.collection("messages").add({
-                        text: "", // Empty text, just image
-                        imageBase64: base64, // Bot will read this and send to Discord
-                        uid: user.uid, 
-                        displayName: user.displayName || "Omni-User",
-                        photoURL: user.photoURL || "", 
-                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-                        platform: "Web"
-                    });
-                } catch(err) {
-                    alert("Image failed: " + err.message);
+                const payload = {
+                    text, uid: user.uid, displayName: user.displayName, photoURL: user.photoURL,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(), platform: "Web"
+                };
+
+                if (channel.type === 'global') await db.collection('messages').add(payload);
+                else if (channel.sectorId) {
+                     if (channel.type === 'forum') {
+                        // Creating a Post
+                         await db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('posts').add({
+                             ...payload, title: text.split('\n')[0].substring(0, 50), body: text
+                         });
+                     } else {
+                         // Standard Chat
+                         await db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('messages').add(payload);
+                     }
                 }
-                setSending(false);
-                if (fileInputRef.current) fileInputRef.current.value = "";
+                setText("");
             };
 
-            return (
-                <div className="flex flex-col h-screen max-w-6xl mx-auto border-x border-slate-800/50 shadow-2xl relative">
-                    
-                    {/* Header */}
-                    <header className="glass-panel px-6 py-4 flex justify-between items-center z-20 border-b border-slate-800/50">
-                        <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-blue-600/20 rounded-lg flex items-center justify-center border border-blue-500/30 shadow-[0_0_15px_rgba(37,99,235,0.2)]">
-                                <i className="fa-solid fa-globe text-blue-400"></i>
-                            </div>
+            // RENDER: FORUM VIEW
+            if (channel?.type === 'forum') {
+                return (
+                    <div className="flex-1 bg-black/20 flex flex-col relative h-full">
+                        <header className="h-16 border-b border-slate-800/50 flex items-center px-6 glass-panel z-10">
+                            <i className="fa-solid fa-layer-group text-purple-500 mr-3"></i>
                             <div>
-                                <h1 className="font-bold text-lg text-white tracking-wide">GLOBAL<span className="text-blue-500">FEED</span></h1>
-                                <div className="flex items-center gap-2">
-                                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                                    <span className="text-[10px] text-slate-400 uppercase tracking-widest">Uplink Stable</span>
+                                <h1 className="font-bold text-white uppercase tracking-wider">{channel.name}</h1>
+                                <p className="text-[10px] text-slate-500">Secure Data Repository</p>
+                            </div>
+                        </header>
+                        
+                        <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 content-start">
+                            {/* Create Post Card */}
+                            <div className="glass-item p-6 rounded-xl border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 transition group" onClick={() => {
+                                const t = prompt("Data Packet Header (Title):");
+                                if(t) {
+                                    const b = prompt("Packet Content:");
+                                    if(b) {
+                                        db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('posts').add({
+                                            title: t, body: b, uid: user.uid, displayName: user.displayName,
+                                            timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                                        });
+                                    }
+                                }
+                            }}>
+                                <div className="w-12 h-12 rounded-full bg-slate-800 flex items-center justify-center group-hover:bg-blue-600 transition mb-3">
+                                    <i className="fa-solid fa-plus text-white"></i>
                                 </div>
+                                <p className="text-sm font-bold text-slate-400">Upload Data Packet</p>
+                            </div>
+
+                            {/* Posts */}
+                            {posts.map(post => (
+                                <div key={post.id} className="glass-panel p-5 rounded-xl flex flex-col hover:shadow-[0_0_20px_rgba(59,130,246,0.1)] transition anim-fade">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <div className="w-6 h-6 rounded bg-slate-700 flex items-center justify-center text-[10px]">{post.displayName?.[0]}</div>
+                                        <span className="text-xs text-slate-400">{post.displayName}</span>
+                                    </div>
+                                    <h3 className="font-bold text-white text-lg mb-2">{post.title}</h3>
+                                    <p className="text-sm text-slate-300 line-clamp-3 mb-4">{post.body}</p>
+                                    <div className="mt-auto pt-3 border-t border-slate-800 flex justify-between items-center text-xs text-slate-500">
+                                        <span><i className="fa-solid fa-clock mr-1"></i> Recent</span>
+                                        <button className="hover:text-blue-400"><i className="fa-solid fa-comments"></i> Access</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            }
+
+            // RENDER: VOICE LOBBY
+            if (channel?.type === 'voice') {
+                return (
+                    <div className="flex-1 bg-black/20 flex flex-col relative h-full">
+                        <header className="h-16 border-b border-slate-800/50 flex items-center px-6 glass-panel z-10">
+                            <i className="fa-solid fa-microphone-lines text-green-500 mr-3"></i>
+                            <h1 className="font-bold text-white uppercase tracking-wider">{channel.name}</h1>
+                        </header>
+                        <div className="flex-1 flex flex-col items-center justify-center p-10">
+                            <div className="w-32 h-32 rounded-full border-2 border-green-500/30 flex items-center justify-center relative mb-8">
+                                <i className="fa-solid fa-tower-broadcast text-4xl text-green-500"></i>
+                                <div className="absolute inset-0 rounded-full border border-green-500 animate-ping opacity-20"></div>
+                            </div>
+                            <h2 className="text-2xl font-bold text-white mb-2">Neural Link Active</h2>
+                            <p className="text-slate-400 max-w-md text-center mb-8">You are connected to the audio lobby. Other operatives in this wavelength can see your signal.</p>
+                            <div className="flex -space-x-4">
+                                {/* Mock Users in Lobby */}
+                                <div className="w-12 h-12 rounded-full border-2 border-black bg-slate-700 flex items-center justify-center" title={user.displayName}>{user.displayName?.[0]}</div>
+                            </div>
+                            <div className="mt-10 p-4 bg-green-900/10 border border-green-500/20 rounded-lg text-green-400 text-sm">
+                                <i className="fa-solid fa-wifi mr-2"></i> Signal Strength: 100%
                             </div>
                         </div>
-                        <button onClick={() => auth.signOut()} className="w-9 h-9 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center transition border border-red-500/20">
-                            <i className="fa-solid fa-power-off"></i>
-                        </button>
+                    </div>
+                );
+            }
+
+            // RENDER: DEFAULT CHAT (Text & Global)
+            return (
+                <div className="flex-1 bg-black/20 flex flex-col relative h-full">
+                    {/* Header */}
+                    <header className="h-16 border-b border-slate-800/50 flex items-center px-6 glass-panel z-10 justify-between">
+                        <div className="flex items-center">
+                            <i className={`fa-solid ${channel?.type==='global' ? 'fa-globe text-blue-500' : 'fa-hashtag text-slate-400'} mr-3`}></i>
+                            <div>
+                                <h1 className="font-bold text-white uppercase tracking-wider">{channel?.name || "Global Feed"}</h1>
+                                <p className="text-[10px] text-slate-500">{channel?.type==='global' ? "Public Relay" : "Secure Text Line"}</p>
+                            </div>
+                        </div>
+                        {channel?.type !== 'global' && <div className="text-slate-600 text-xs">ID: {channel?.id?.slice(0,4)}</div>}
                     </header>
 
-                    {/* Messages Area */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-6 relative z-10 scroll-smooth">
-                        {messages.map((msg) => {
+                    {/* Messages */}
+                    <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                        {messages.map(msg => {
                             const isMe = msg.uid === user.uid;
-                            const isDiscord = msg.platform === 'Discord';
-                            
                             return (
-                                <div key={msg.id} className={`flex gap-4 message-anim ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                    {/* Avatar (Left for others) */}
-                                    {!isMe && (
-                                        <div className="flex-shrink-0 mt-1 relative">
-                                            {msg.photoURL ? 
-                                                <img src={msg.photoURL} className="w-9 h-9 rounded-lg border border-slate-700 object-cover" /> : 
-                                                <div className="w-9 h-9 bg-slate-800 rounded-lg border border-slate-700 flex items-center justify-center font-bold text-slate-500 text-xs">{msg.displayName?.[0]}</div>
-                                            }
-                                            {isDiscord && <div className="absolute -bottom-1 -right-1 bg-[#5865F2] text-white text-[8px] px-1 rounded border border-black"><i className="fa-brands fa-discord"></i></div>}
+                                <div key={msg.id} className={`flex gap-4 anim-fade ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                    {!isMe && <div className="w-8 h-8 rounded bg-slate-800 flex items-center justify-center text-xs border border-slate-700 mt-1">{msg.displayName?.[0]}</div>}
+                                    <div className={`max-w-[70%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className={`text-xs font-bold ${isMe ? 'text-blue-400' : 'text-slate-400'}`}>{msg.displayName}</span>
+                                            <span className="text-[9px] text-slate-600">{msg.timestamp?.toDate().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                                         </div>
-                                    )}
-
-                                    <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[85%] sm:max-w-[70%]`}>
-                                        <div className="flex items-center gap-2 mb-1 opacity-70">
-                                            <span className={`text-xs font-bold ${isMe ? 'text-blue-400' : 'text-slate-300'}`}>{msg.displayName}</span>
-                                            <span className="text-[9px] text-slate-500 uppercase">{formatTime(msg.timestamp)}</span>
-                                        </div>
-                                        
-                                        <div className={`p-3 rounded-2xl text-sm leading-relaxed shadow-lg backdrop-blur-md border overflow-hidden ${
-                                            isMe 
-                                            ? 'bg-blue-600/20 border-blue-500/30 text-blue-50 rounded-tr-sm' 
-                                            : 'bg-slate-800/60 border-slate-700/50 text-slate-200 rounded-tl-sm'
-                                        }`}>
-                                            {/* Text Content */}
-                                            {msg.text && <p className="whitespace-pre-wrap break-words">{msg.text}</p>}
-                                            
-                                            {/* Image from Discord (URL) */}
-                                            {msg.imageURL && (
-                                                <div className="mt-2 rounded-lg overflow-hidden border border-white/10">
-                                                    <img src={msg.imageURL} className="max-w-full h-auto block" loading="lazy" />
-                                                </div>
-                                            )}
-
-                                            {/* Image from Web (Base64) */}
-                                            {msg.imageBase64 && (
-                                                <div className="mt-2 rounded-lg overflow-hidden border border-white/10">
-                                                    <img src={msg.imageBase64} className="max-w-full h-auto block" loading="lazy" />
-                                                </div>
-                                            )}
+                                        <div className={`px-4 py-2 rounded-lg text-sm leading-relaxed ${isMe ? 'bg-blue-600/20 text-blue-50 border border-blue-500/30' : 'bg-slate-800/60 text-slate-300 border border-slate-700/50'}`}>
+                                            {msg.text}
                                         </div>
                                     </div>
-
-                                    {/* Avatar (Right for me) */}
-                                    {isMe && (
-                                        <div className="flex-shrink-0 mt-1">
-                                            {msg.photoURL ? 
-                                                <img src={msg.photoURL} className="w-9 h-9 rounded-lg border border-blue-500/30 object-cover" /> : 
-                                                <div className="w-9 h-9 bg-blue-900 rounded-lg border border-blue-500/30 flex items-center justify-center font-bold text-blue-200 text-xs">{msg.displayName?.[0]}</div>
-                                            }
-                                        </div>
-                                    )}
+                                    {isMe && <div className="w-8 h-8 rounded bg-blue-900/30 flex items-center justify-center text-xs border border-blue-500/30 mt-1">{msg.displayName?.[0]}</div>}
                                 </div>
                             );
                         })}
                         <div ref={bottomRef}></div>
                     </div>
 
-                    {/* Input Area */}
-                    <div className="p-4 glass-panel border-t border-slate-800/50 z-20">
-                        <form onSubmit={sendMessage} className="relative flex gap-3 max-w-5xl mx-auto">
-                            
-                            {/* Hidden File Input */}
-                            <input 
-                                type="file" 
-                                ref={fileInputRef}
-                                accept="image/*"
-                                onChange={handleImageUpload}
-                                className="hidden"
-                            />
-                            
-                            {/* Attach Button */}
-                            <button 
-                                type="button"
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={sending}
-                                className="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 flex items-center justify-center transition"
-                            >
-                                <i className="fa-solid fa-paperclip"></i>
-                            </button>
-
-                            <input 
-                                value={text} 
-                                onChange={e => setText(e.target.value)} 
-                                placeholder="Transmit data..."
-                                disabled={sending}
-                                className="flex-1 bg-black/40 border border-slate-700 text-white rounded-xl px-5 focus:border-blue-500 focus:shadow-[0_0_15px_rgba(37,99,235,0.15)] outline-none transition placeholder-slate-600"
-                            />
-                            
-                            <button type="submit" disabled={sending || !text.trim()} className={`w-12 h-12 rounded-xl flex items-center justify-center transition border ${
-                                text.trim() 
-                                ? 'bg-blue-600 text-white border-blue-500 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]' 
-                                : 'bg-slate-800 text-slate-600 border-slate-700 cursor-not-allowed'
-                            }`}>
-                                {sending ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-paper-plane"></i>}
-                            </button>
+                    {/* Input */}
+                    <div className="p-4 bg-black/40 border-t border-slate-800/50">
+                        <form onSubmit={sendMessage} className="relative">
+                            <input value={text} onChange={e=>setText(e.target.value)} placeholder={`Transmission to ${channel?.name || "channel"}...`} 
+                                className="w-full bg-slate-900/50 border border-slate-700 rounded-lg pl-4 pr-12 py-3 text-white focus:border-blue-500 outline-none transition font-light placeholder-slate-600" />
+                            <button type="submit" className="absolute right-2 top-2 p-1.5 text-slate-400 hover:text-blue-400 transition"><i className="fa-solid fa-paper-plane"></i></button>
                         </form>
                     </div>
                 </div>
@@ -320,19 +339,95 @@
 
         function App() {
             const [user, setUser] = useState(null);
-            const [loading, setLoading] = useState(true);
-            useEffect(() => auth.onAuthStateChanged(u => { setUser(u); setLoading(false); }), []);
+            const [sectors, setSectors] = useState([]);
+            const [activeSectorId, setActiveSectorId] = useState('global');
+            const [activeChannel, setActiveChannel] = useState({ id: 'global', type: 'global', name: 'Global Feed' });
             
-            if (loading) return (
-                <div className="h-screen flex items-center justify-center bg-black">
-                    <div className="flex gap-2">
-                        <div className="w-3 h-3 bg-blue-500 rounded-full typing-dot"></div>
-                        <div className="w-3 h-3 bg-blue-500 rounded-full typing-dot"></div>
-                        <div className="w-3 h-3 bg-blue-500 rounded-full typing-dot"></div>
-                    </div>
+            // Initial Auth
+            useEffect(() => auth.onAuthStateChanged(setUser), []);
+
+            // Load Sectors (Communities)
+            useEffect(() => {
+                if(!user) return;
+                // For demo, we just load ALL sectors. In prod, you'd filter by members array.
+                const unsub = db.collection('sectors').onSnapshot(snap => {
+                    const data = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                    setSectors(data);
+                });
+                return unsub;
+            }, [user]);
+
+            // When Sector changes, select default channel
+            useEffect(() => {
+                if(activeSectorId === 'global') {
+                    setActiveChannel({ id: 'global', type: 'global', name: 'Global Feed' });
+                } else if (activeSectorId === 'dms') {
+                     setActiveChannel({ id: 'dm-home', type: 'dm', name: 'Direct Messages' });
+                } else {
+                    // Find first channel of sector
+                    const sector = sectors.find(s => s.id === activeSectorId);
+                    if(sector && sector.channels && sector.channels.length > 0) {
+                        const first = sector.channels[0];
+                        setActiveChannel({ ...first, sectorId: sector.id });
+                    } else if (sector) {
+                        // No channels yet
+                        setActiveChannel(null);
+                    }
+                }
+            }, [activeSectorId, sectors]);
+
+            // Actions
+            const handleCreateSector = () => {
+                const name = prompt("Designate Sector Name:");
+                if(name) {
+                    db.collection('sectors').add({
+                        name, ownerId: user.uid, 
+                        channels: [{ id: Date.now().toString(), name: 'general', type: 'text' }] 
+                    });
+                }
+            };
+
+            const handleCreateChannel = (type) => {
+                const name = prompt(`Designate ${type} Wavelength Name:`);
+                if(name) {
+                    const sector = sectors.find(s => s.id === activeSectorId);
+                    const newCh = { id: Date.now().toString(), name: name.toLowerCase().replace(/\s/g, '-'), type };
+                    const updatedChannels = [...(sector.channels || []), newCh];
+                    db.collection('sectors').doc(activeSectorId).update({ channels: updatedChannels });
+                }
+            };
+
+            if (!user) return (
+                 <div className="h-screen flex items-center justify-center bg-black">
+                    <button onClick={() => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())} className="glass-panel px-10 py-5 rounded-2xl text-white font-bold uppercase tracking-[0.2em] border border-blue-500/30 hover:bg-blue-600/20 hover:scale-105 transition shadow-[0_0_50px_rgba(37,99,235,0.2)]">
+                         <i className="fa-brands fa-google mr-3"></i> Initialize Uplink
+                    </button>
                 </div>
             );
-            return user ? <ChatRoom user={user} /> : <Login />;
+
+            // Derived State for UI
+            const activeSectorData = sectors.find(s => s.id === activeSectorId);
+
+            return (
+                <div className="flex h-screen w-full overflow-hidden">
+                    <NavRail 
+                        sectors={sectors} 
+                        activeId={activeSectorId} 
+                        onSelect={setActiveSectorId} 
+                        onCreateSector={handleCreateSector} 
+                    />
+                    
+                    <ContextSidebar 
+                        activeSector={activeSectorId === 'global' ? 'global' : (activeSectorId === 'dms' ? 'dms' : activeSectorData)}
+                        user={user}
+                        onChannelSelect={(ch) => setActiveChannel({...ch, sectorId: activeSectorId})}
+                        activeChannel={activeChannel}
+                        onCreateChannel={handleCreateChannel}
+                    />
+
+                    <MainStage channel={activeChannel} user={user} db={db} />
+                </div>
+            );
         }
 
         ReactDOM.createRoot(document.getElementById('root')).render(<App />);
