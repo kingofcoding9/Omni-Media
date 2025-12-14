@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Omni-OS v6.2 (Feature Complete)</title>
+    <title>Omni-OS v6.3 (Socket Fix)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -20,7 +20,6 @@
         :root { --neon-blue: #3b82f6; --bg-dark: #050505; --glass: rgba(15, 23, 42, 0.95); }
         html, body { height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden; background-color: var(--bg-dark); color: #e0e0e0; font-family: 'Exo 2', sans-serif; position: fixed; inset: 0; }
         #root { height: 100%; width: 100%; display: flex; overflow: hidden; }
-        body::before { content: ""; position: absolute; inset: 0; z-index: -1; background-image: url("https://www.transparenttextures.com/patterns/dark-matter.png"), radial-gradient(circle at 50% 50%, #111827 0%, #000000 100%); opacity: 0.8; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
@@ -46,11 +45,23 @@
         const auth = firebase.auth();
         const { useState, useEffect, useRef } = React;
 
-        // --- SOCKET CONNECTION ---
-        // Connect to the same origin (Hugging Face)
-        const socket = io('/', {
-            transports: ['websocket', 'polling'], // Fallback options
-            reconnection: true
+        // --- ROBUST SOCKET CONNECTION ---
+        // 1. Determine URL: Use the current window origin (standard for HF Spaces)
+        const SERVER_URL = window.location.origin; 
+        
+        // 2. Initialize with Polling fallback (Fixes HF firewall issues)
+        console.log("Attempting Socket Connection to:", SERVER_URL);
+        const socket = io(SERVER_URL, {
+            transports: ['polling', 'websocket'], // Polling first is safer
+            path: '/socket.io/',
+            reconnectionAttempts: 10,
+            timeout: 10000,
+            autoConnect: true
+        });
+
+        // Debugging Events
+        socket.on("connect_error", (err) => {
+            console.error("Socket Connection Failed:", err.message);
         });
 
         // --- UTILS ---
@@ -81,14 +92,11 @@
             const [bio, setBio] = useState(targetUser.bio || "No tactical data available.");
             const [displayName, setDisplayName] = useState(targetUser.displayName);
             
-            // Note: Since we don't have a DB save here, we rely on the socket event if implemented on backend, 
-            // or just Auth update for Name/Photo.
             const handleSave = async () => {
                 if(displayName !== currentUser.displayName) {
                     await currentUser.updateProfile({ displayName });
                 }
-                // Send 'update_profile' event to backend to save to JSON
-                socket.emit('update_profile', { bio, displayName });
+                socket.emit('update_profile', { uid: currentUser.uid, bio, displayName });
                 setIsEditing(false);
             };
 
@@ -97,7 +105,7 @@
                 if(!file) return;
                 const base64 = await compressImage(file, 200);
                 await currentUser.updateProfile({ photoURL: base64 });
-                socket.emit('update_profile', { photoURL: base64 });
+                socket.emit('update_profile', { uid: currentUser.uid, photoURL: base64 });
             };
 
             const isMe = currentUser.uid === targetUser.uid;
@@ -151,6 +159,22 @@
             );
         }
 
+        function DMDirectory({ user, dms, onSelectDM }) {
+            const [search, setSearch] = useState("");
+            return (
+                <div className="flex-1 bg-black/40 flex flex-col h-full relative z-50">
+                    <header className="h-16 border-b border-slate-800 flex items-center px-4 glass-panel justify-between"><h2 className="text-lg font-bold text-white tracking-widest">DIRECT UPLINKS</h2></header>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                        {dms.map(dm => {
+                             const otherId = dm.participants.find(p => p !== user.uid);
+                             const name = dm.names ? dm.names[otherId] : "Unknown Operative";
+                             return <div key={dm.id} onClick={() => onSelectDM({id: dm.id, name, type: 'dm'})} className="p-3 bg-slate-800/50 rounded-lg flex items-center gap-3 cursor-pointer hover:bg-slate-700 transition"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center font-bold text-white">{name[0]}</div><div><p className="font-bold text-white">{name}</p><p className="text-[10px] text-slate-400">Secure Line Active</p></div></div>
+                        })}
+                    </div>
+                </div>
+            );
+        }
+
         function ContextSidebar({ activeSector, user, onChannelSelect, activeChannel, onCreateChannel }) {
             if (!activeSector || activeSector === 'dms') return null;
             const title = activeSector === 'global' ? "GLOBAL FEED" : activeSector.name;
@@ -180,30 +204,11 @@
             );
         }
 
-        function DMDirectory({ user, dms, onSelectDM }) {
-            const [search, setSearch] = useState("");
-            // In socket version, we'd emit 'search_user' and listen for 'search_results'
-            // For now, simpler list
-            return (
-                <div className="flex-1 bg-black/40 flex flex-col h-full relative z-50">
-                    <header className="h-16 border-b border-slate-800 flex items-center px-4 glass-panel justify-between"><h2 className="text-lg font-bold text-white tracking-widest">DIRECT UPLINKS</h2></header>
-                    <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                        {dms.map(dm => {
-                             const otherId = dm.participants.find(p => p !== user.uid);
-                             const name = dm.names ? dm.names[otherId] : "Unknown Operative";
-                             return <div key={dm.id} onClick={() => onSelectDM({id: dm.id, name, type: 'dm'})} className="p-3 bg-slate-800/50 rounded-lg flex items-center gap-3 cursor-pointer hover:bg-slate-700 transition"><div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center font-bold text-white">{name[0]}</div><div><p className="font-bold text-white">{name}</p><p className="text-[10px] text-slate-400">Secure Line Active</p></div></div>
-                        })}
-                    </div>
-                </div>
-            );
-        }
-
         function MainStage({ channel, user, onViewProfile }) {
             const [messages, setMessages] = useState([]);
             const [text, setText] = useState("");
             const bottomRef = useRef();
             
-            // VOICE REFS
             const localVideoRef = useRef();
             const remoteVideoRef = useRef();
             const peerConnection = useRef();
@@ -230,6 +235,14 @@
                 socket.on('channel_history', handleHistory);
                 return () => { socket.off('new_message', handleNewMsg); socket.off('channel_history', handleHistory); };
             }, []);
+
+            useEffect(() => {
+                if (channel?.type !== 'voice') {
+                    if (peerConnection.current) peerConnection.current.close();
+                    setIsStreaming(false);
+                    setIsInCall(false);
+                }
+            }, [channel]);
 
             // --- VOICE LOGIC ---
             const startCall = async () => {
@@ -368,6 +381,8 @@
             const handleCreateChannel = (type) => { const name = prompt("Channel Name:"); if(name) socket.emit('create_channel', { sectorId: activeSectorId, name, type }); };
 
             if (!user) return <div className="h-full flex items-center justify-center bg-black"><button onClick={() => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())} className="glass-panel px-10 py-5 rounded-2xl text-white font-bold uppercase tracking-[0.2em] border border-blue-500/30 hover:bg-blue-600/20"><i className="fa-brands fa-google mr-3"></i> Initialize Uplink</button></div>;
+            
+            // Show connecting screen if stuck
             if(!connected) return <div className="h-full flex items-center justify-center bg-black text-blue-500 font-mono animate-pulse">ESTABLISHING SOCKET LINK...</div>;
 
             const activeSectorData = sectors.find(s => s.id === activeSectorId);
