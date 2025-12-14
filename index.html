@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Omni-Media: Terminal</title>
+    <title>Omni-Media Terminal</title>
     
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -31,9 +31,8 @@
             theme: {
                 extend: {
                     colors: {
-                        'cyber-black': '#030508',
-                        'cyber-dark': '#0a0f16',
-                        'cyber-panel': '#111827',
+                        'cyber-black': '#050a14',
+                        'cyber-dark': '#0f172a',
                         'cyber-blue': '#00f0ff',
                         'cyber-red': '#ff2a2a',
                         'cyber-green': '#00ff9d',
@@ -41,10 +40,6 @@
                     fontFamily: {
                         sans: ['"Rajdhani"', 'sans-serif'],
                         mono: ['"Share Tech Mono"', 'monospace'],
-                    },
-                    boxShadow: {
-                        'glow-blue': '0 0 10px rgba(0, 240, 255, 0.3)',
-                        'glow-green': '0 0 10px rgba(0, 255, 157, 0.2)',
                     }
                 }
             }
@@ -52,26 +47,39 @@
     </script>
 
     <style>
-        html, body { height: 100dvh; width: 100vw; overflow: hidden; background: #030508; color: #a0a0a0; }
+        /* CORE RESET */
+        html, body { height: 100dvh; width: 100vw; overflow: hidden; background: #050a14; color: #a0a0a0; }
         #root { height: 100%; width: 100%; display: flex; flex-direction: column; }
         
-        /* Sci-Fi Scrollbar */
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: #0a0f16; }
-        ::-webkit-scrollbar-thumb { background: #1f2937; }
+        /* SCROLLBARS */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 2px; }
         ::-webkit-scrollbar-thumb:hover { background: #00f0ff; }
 
-        .glass-panel { background: rgba(10, 15, 22, 0.95); border: 1px solid #1f2937; backdrop-filter: blur(8px); }
-        .cyber-border { border: 1px solid #1f2937; position: relative; }
-        .cyber-border::before { content: ''; position: absolute; top: -1px; left: -1px; width: 8px; height: 8px; border-top: 2px solid #374151; border-left: 2px solid #374151; }
-        .cyber-border::after { content: ''; position: absolute; bottom: -1px; right: -1px; width: 8px; height: 8px; border-bottom: 2px solid #374151; border-right: 2px solid #374151; }
+        /* CYBERPUNK BORDERS */
+        .cyber-border { 
+            border: 1px solid #1e293b; 
+            position: relative; 
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        .cyber-border::before { 
+            content: ''; position: absolute; top: 0; left: 0; 
+            width: 8px; height: 8px; 
+            border-top: 2px solid #00f0ff; border-left: 2px solid #00f0ff; 
+        }
+        .cyber-border::after { 
+            content: ''; position: absolute; bottom: 0; right: 0; 
+            width: 8px; height: 8px; 
+            border-bottom: 2px solid #00f0ff; border-right: 2px solid #00f0ff; 
+        }
         
-        .active-glow { border-color: #00f0ff; box-shadow: 0 0 15px rgba(0, 240, 255, 0.15) inset; }
+        /* UTILS */
+        .glass-panel { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); }
+        .anim-fade { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
         
-        .anim-slide-in { animation: slideIn 0.3s ease-out forwards; }
-        @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-
-        .md-code { background: #111827; color: #00f0ff; padding: 2px 6px; font-family: 'Share Tech Mono', monospace; border: 1px solid #1f2937; }
+        .md-code { background: rgba(0,0,0,0.3); color: #00f0ff; font-family: monospace; padding: 2px 4px; border: 1px solid #1e293b; }
         .md-link { color: #00f0ff; text-decoration: none; border-bottom: 1px dashed #00f0ff; }
     </style>
 </head>
@@ -108,8 +116,7 @@
                 if (file.size > 2 * 1024 * 1024) return reject(new Error("File too large. Max 2MB."));
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    const result = e.target.result;
-                    if (file.type === 'image/gif') return resolve(result);
+                    if (file.type === 'image/gif') return resolve(e.target.result);
                     const img = new Image();
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
@@ -121,15 +128,16 @@
                         ctx.drawImage(img, 0, 0, w, h);
                         resolve(canvas.toDataURL('image/jpeg', 0.85));
                     };
-                    img.src = result;
+                    img.src = e.target.result;
                 };
                 reader.readAsDataURL(file);
             });
         };
 
-        const generateAvatar = (name) => `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'User')}&background=0a0f16&color=00f0ff&bold=true&font-size=0.4`;
+        const generateAvatar = (name) => `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'User')}&background=0f172a&color=00f0ff&bold=true`;
 
-        // --- RICH TEXT ---
+        // --- COMPONENTS ---
+
         const RichText = React.memo(({ text }) => {
             if (!text) return null;
             const parts = text.split(/(`[^`]+`)/g);
@@ -151,186 +159,161 @@
             );
         });
 
-        // --- COMPONENTS ---
-
-        // 1. SECTOR MAP (Replaces Server List)
+        // --- SECTOR MAP (MODAL) ---
         const SectorMap = ({ sectors, onSelect, onClose, user, onCreateSector }) => {
-            const [code, setCode] = useState("");
-            
-            // In a real backend, you'd fetch only what you have access to. 
-            // Here we filter on frontend for demo.
             const mySectors = sectors.filter(s => s.id === 'global' || (s.members && s.members.includes(user.uid)) || s.ownerId === user.uid || s.isPublic);
+            const [code, setCode] = useState("");
 
             const handleJoin = () => {
                 if(!code) return;
-                // Emit socket event to join private sector
                 socket.emit('join_sector_via_code', { uid: user.uid, code });
-                alert("Access Code Transmitted... (Backend logic required)");
+                alert("Transmitting Access Code...");
+                setCode("");
             };
 
             return (
-                <div className="fixed inset-0 z-[60] bg-[#030508]/95 backdrop-blur-md flex flex-col p-6 anim-fade">
-                    <div className="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
-                        <div>
-                            <h1 className="text-3xl font-bold text-white font-sans tracking-widest">SECTOR MAP</h1>
-                            <p className="text-cyber-blue font-mono text-xs">SELECT DESTINATION NODE</p>
-                        </div>
-                        <button onClick={onClose} className="w-10 h-10 border border-red-900 text-red-500 hover:bg-red-900/20 rounded-full"><i className="fa-solid fa-xmark"></i></button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-4">
-                        {mySectors.map(s => (
-                            <div key={s.id} onClick={() => onSelect(s.id)} className="group relative h-40 cyber-border bg-cyber-dark hover:bg-[#0f172a] cursor-pointer transition-all hover:border-cyber-blue p-6 flex flex-col justify-between">
-                                <div className="absolute top-2 right-2 text-gray-700 group-hover:text-cyber-blue font-mono text-xs">ID: {s.id.slice(0,4)}</div>
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 border border-gray-700 flex items-center justify-center bg-black">
-                                        {s.icon ? <img src={s.icon} className="w-full h-full object-cover"/> : <span className="font-bold text-lg text-gray-500">{s.name[0]}</span>}
-                                    </div>
-                                    <div>
-                                        <h3 className="font-bold text-xl text-white group-hover:text-cyber-blue">{s.name}</h3>
-                                        <p className="text-xs text-gray-500 font-mono uppercase">{s.id === 'global' ? 'Public Hub' : 'Secure Node'}</p>
-                                    </div>
-                                </div>
-                                <div className="text-right">
-                                    <span className="text-xs font-mono text-cyber-green opacity-0 group-hover:opacity-100 transition">INITIATE LINK >></span>
-                                </div>
-                            </div>
-                        ))}
+                <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur flex items-center justify-center p-4">
+                    <div className="w-full max-w-4xl h-[80vh] cyber-border bg-[#050a14] flex flex-col p-6 relative anim-fade">
+                        <button onClick={onClose} className="absolute top-4 right-4 text-red-500 hover:text-white"><i className="fa-solid fa-xmark text-2xl"></i></button>
                         
-                        {/* New Sector Node */}
-                        <div onClick={onCreateSector} className="h-40 border border-dashed border-gray-700 hover:border-cyber-green hover:bg-green-900/10 cursor-pointer flex flex-col items-center justify-center transition gap-2 group">
-                            <i className="fa-solid fa-plus text-2xl text-gray-600 group-hover:text-cyber-green"></i>
-                            <span className="text-sm font-mono text-gray-500 group-hover:text-cyber-green">ESTABLISH NEW SECTOR</span>
+                        <div className="mb-6 border-b border-slate-800 pb-4">
+                            <h1 className="text-3xl font-bold text-white tracking-widest font-sans">SECTOR NAVIGATION</h1>
+                            <p className="text-cyber-blue font-mono text-xs">SELECT DESTINATION</p>
                         </div>
-                    </div>
 
-                    <div className="mt-8 border-t border-gray-800 pt-6 flex flex-col md:flex-row gap-4 items-center justify-center">
-                        <div className="font-mono text-sm text-gray-500">PRIVATE ACCESS UPLINK:</div>
-                        <div className="flex">
-                            <input value={code} onChange={e=>setCode(e.target.value)} placeholder="ENTER ACCESS CODE" className="bg-black border border-gray-700 text-white font-mono px-4 py-2 w-64 focus:border-cyber-blue outline-none" />
-                            <button onClick={handleJoin} className="bg-cyber-panel border border-l-0 border-gray-700 text-cyber-blue px-4 font-bold hover:bg-cyber-blue/10">CONNECT</button>
+                        <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+                            {mySectors.map(s => (
+                                <div key={s.id} onClick={() => onSelect(s.id)} className="group h-32 border border-slate-800 bg-[#0f172a] hover:border-cyber-blue hover:bg-[#1e293b] cursor-pointer transition p-4 flex flex-col justify-between relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-2 opacity-50 text-[10px] font-mono">{s.id.slice(0,4)}</div>
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-black border border-slate-700 flex items-center justify-center font-bold text-gray-500 group-hover:text-cyber-blue group-hover:border-cyber-blue transition">
+                                            {s.name[0]}
+                                        </div>
+                                        <div>
+                                            <h3 className="font-bold text-lg text-white group-hover:text-cyber-blue leading-tight">{s.name}</h3>
+                                            <p className="text-[10px] text-gray-500 uppercase">{s.id === 'global' ? 'Public Hub' : 'Secure'}</p>
+                                        </div>
+                                    </div>
+                                    <div className="w-full h-1 bg-slate-800 mt-2 group-hover:bg-cyber-blue transition-colors"></div>
+                                </div>
+                            ))}
+                            <div onClick={onCreateSector} className="h-32 border border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-cyber-green hover:text-cyber-green transition text-gray-600 gap-2">
+                                <i className="fa-solid fa-plus text-xl"></i>
+                                <span className="text-xs font-mono">ESTABLISH SECTOR</span>
+                            </div>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-slate-800 flex flex-col md:flex-row gap-4 items-center justify-center">
+                            <span className="font-mono text-xs text-gray-500">SECURE UPLINK:</span>
+                            <div className="flex w-full md:w-auto">
+                                <input value={code} onChange={e=>setCode(e.target.value)} placeholder="ENTER CODE" className="bg-black border border-slate-700 text-white px-3 py-2 text-sm font-mono w-full focus:border-cyber-blue outline-none" />
+                                <button onClick={handleJoin} className="bg-slate-800 text-cyber-blue px-4 py-2 border border-l-0 border-slate-700 hover:bg-slate-700 font-bold text-sm">CONNECT</button>
+                            </div>
                         </div>
                     </div>
                 </div>
             );
         };
 
-        // 2. SYSTEMS PANEL (Right Sidebar - Frequencies & Admin)
-        const SystemsPanel = ({ activeSectorData, activeChannel, onChannelSelect, user, onCreateChannel, isOwner, socket, dms, activeSectorId, onSelectDM }) => {
+        // --- MAIN LAYOUT COMPONENTS ---
+
+        // 1. Systems Panel (Left Sidebar)
+        const SystemsPanel = ({ activeSectorData, activeChannel, onChannelSelect, user, onCreateChannel, isOwner, socket, dms, activeSectorId, onSelectDM, mobileOpen, closeMobile }) => {
             const [adminMode, setAdminMode] = useState(false);
-
-            const handleDeleteChannel = (channelId) => {
-                if(confirm("Confirm deletion of frequency bandwidth?")) {
-                    socket.emit('delete_channel', { sectorId: activeSectorData.id, channelId });
-                }
-            };
             
+            const handleDeleteChannel = (channelId) => {
+                if(confirm("Confirm Deletion?")) socket.emit('delete_channel', { sectorId: activeSectorData.id, channelId });
+            };
             const handleInvite = () => {
-                // Mock invite system
-                const code = `${activeSectorData.name.substring(0,3).toUpperCase()}-${Math.floor(Math.random()*9999)}`;
-                prompt("SECTOR ACCESS KEY GENERATED (Share this):", code);
-                // socket.emit('create_invite', { sectorId: activeSectorData.id, code });
+                const code = activeSectorData.inviteCode || "REQ-ADMIN";
+                prompt("SECTOR ACCESS KEY:", code);
             };
 
-            // DM Logic Switch
-            if (activeSectorId === 'dms') {
-                return (
-                    <div className="w-72 bg-[#05080c] border-l border-gray-800 flex flex-col h-full">
-                        <div className="p-4 border-b border-gray-800 bg-[#020305]">
-                            <h2 className="font-mono text-cyber-blue text-sm tracking-widest mb-1">ENCRYPTED COMMS</h2>
-                            <p className="text-[10px] text-gray-600">DIRECT UPLINKS</p>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-2">
-                             {dms.map(dm => {
-                                const otherId = dm.participants.find(p => p !== user.uid);
-                                const name = dm.names ? dm.names[otherId] : "Unknown";
-                                return (
-                                    <div key={dm.id} onClick={() => onSelectDM({id: dm.id, name, type: 'dm'})} className={`p-3 mb-1 flex items-center gap-3 cursor-pointer hover:bg-gray-900 border border-transparent hover:border-gray-800 ${activeChannel?.id === dm.id ? 'bg-gray-900 border-l-2 border-l-cyber-blue' : ''}`}>
-                                        <div className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center text-xs font-bold text-gray-400">{name[0]}</div>
-                                        <div className="truncate text-sm text-gray-300 font-mono">{name}</div>
-                                    </div>
-                                )
-                            })}
-                        </div>
-                    </div>
-                )
-            }
-
-            if (!activeSectorData) return null;
+            const panelClass = `fixed inset-y-0 left-0 w-64 bg-[#050a14] border-r border-slate-800 transform transition-transform duration-300 z-40 
+                ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col`;
 
             return (
-                <div className="w-72 bg-[#05080c] border-l border-gray-800 flex flex-col h-full z-20">
-                    <div className="p-4 border-b border-gray-800 bg-[#020305]">
-                        <h2 className="font-mono text-cyber-blue text-sm tracking-widest mb-1">SYSTEMS PANEL</h2>
-                        <h3 className="text-lg font-bold text-white leading-none truncate">{activeSectorData.name}</h3>
-                    </div>
-
-                    {/* Admin Toggle */}
-                    {isOwner && (
-                        <div className="p-2 border-b border-gray-800 bg-red-900/5">
-                            <label className="flex items-center justify-between cursor-pointer px-2">
-                                <span className="text-[10px] font-mono text-red-400 uppercase">Admin Override</span>
-                                <input type="checkbox" checked={adminMode} onChange={() => setAdminMode(!adminMode)} className="accent-red-500" />
-                            </label>
+                <div className={panelClass}>
+                    {/* Header */}
+                    <div className="h-14 border-b border-slate-800 flex items-center justify-between px-4 bg-[#0f172a]">
+                        <div>
+                            <h2 className="text-cyber-blue font-mono text-[10px] tracking-widest">SYSTEMS</h2>
+                            <h3 className="font-bold text-white text-sm truncate w-40">{activeSectorId === 'dms' ? 'DIRECT UPLINKS' : (activeSectorData?.name || 'LOADING...')}</h3>
                         </div>
-                    )}
-
-                    {/* Channels List */}
-                    <div className="flex-1 overflow-y-auto p-3 space-y-6 custom-scroll">
-                        {['text', 'voice'].map(type => {
-                            const channels = activeSectorData.channels?.filter(c => c.type === type) || [];
-                            // Hide Text category for Global if preferred, or keep standard
-                            return (
-                                <div key={type}>
-                                    <div className="flex justify-between items-center mb-2 px-1">
-                                        <span className="text-[10px] font-mono text-gray-500 uppercase tracking-[0.2em]">{type} FREQUENCIES</span>
-                                        {isOwner && adminMode && (
-                                            <button onClick={() => onCreateChannel(type)} className="text-cyber-green hover:text-white text-xs"><i className="fa-solid fa-plus"></i></button>
-                                        )}
-                                    </div>
-                                    <div className="space-y-1">
-                                        {channels.map(ch => (
-                                            <div key={ch.id} className="flex items-center group">
-                                                <div onClick={() => onChannelSelect(ch)} 
-                                                    className={`flex-1 flex items-center gap-3 px-3 py-2 cursor-pointer transition border border-transparent 
-                                                    ${activeChannel?.id === ch.id ? 'bg-[#0f172a] border-cyber-blue/30 text-cyber-blue shadow-glow-blue' : 'text-gray-400 hover:text-white hover:bg-gray-900'}`}>
-                                                    <i className={`fa-solid ${type === 'voice' ? 'fa-wave-square' : 'fa-terminal'} text-[10px]`}></i>
-                                                    <span className="text-sm font-mono truncate">{ch.name}</span>
-                                                </div>
-                                                {isOwner && adminMode && (
-                                                    <button onClick={() => handleDeleteChannel(ch.id)} className="w-6 h-full text-red-500 hover:bg-red-900/30 flex items-center justify-center ml-1"><i className="fa-solid fa-xmark text-xs"></i></button>
-                                                )}
-                                            </div>
-                                        ))}
-                                        {channels.length === 0 && <div className="text-[10px] text-gray-700 italic px-2">No active frequencies</div>}
-                                    </div>
-                                </div>
-                            );
-                        })}
+                        <button onClick={closeMobile} className="md:hidden text-gray-500"><i className="fa-solid fa-xmark"></i></button>
                     </div>
 
-                    {/* Footer Actions */}
-                    <div className="p-3 border-t border-gray-800 bg-[#020305] space-y-2">
-                         {isOwner && (
-                            <button onClick={handleInvite} className="w-full py-2 border border-dashed border-gray-600 text-gray-400 font-mono text-xs hover:border-cyber-blue hover:text-cyber-blue transition">
-                                <i className="fa-solid fa-share-nodes mr-2"></i>GENERATE ACCESS KEY
+                    {/* Content */}
+                    <div className="flex-1 overflow-y-auto custom-scroll p-2">
+                        {activeSectorId === 'dms' ? (
+                            <div className="space-y-1">
+                                {dms.map(dm => {
+                                    const otherId = dm.participants.find(p => p !== user.uid);
+                                    const name = dm.names ? dm.names[otherId] : "Unknown";
+                                    return (
+                                        <div key={dm.id} onClick={() => { onSelectDM({id: dm.id, name, type: 'dm'}); closeMobile(); }} 
+                                            className={`p-2 flex items-center gap-3 cursor-pointer rounded hover:bg-slate-800 border border-transparent ${activeChannel?.id === dm.id ? 'bg-slate-800 border-cyber-blue/50' : ''}`}>
+                                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-xs font-bold text-gray-500 border border-slate-700">{name[0]}</div>
+                                            <span className="text-sm text-gray-300 truncate">{name}</span>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        ) : activeSectorData ? (
+                            <>
+                                {isOwner && (
+                                    <div className="mb-4 px-2 py-2 bg-red-900/10 border border-red-900/30 rounded flex items-center justify-between">
+                                        <span className="text-[10px] text-red-400 font-mono">ADMIN OVERRIDE</span>
+                                        <input type="checkbox" checked={adminMode} onChange={() => setAdminMode(!adminMode)} className="accent-red-500" />
+                                    </div>
+                                )}
+                                {['text', 'voice'].map(type => (
+                                    <div key={type} className="mb-6">
+                                        <div className="flex items-center justify-between px-2 mb-2">
+                                            <span className="text-[10px] font-mono text-gray-500 uppercase tracking-widest">{type} FEED</span>
+                                            {isOwner && adminMode && <button onClick={() => onCreateChannel(type)} className="text-cyber-green text-xs"><i className="fa-solid fa-plus"></i></button>}
+                                        </div>
+                                        <div className="space-y-0.5">
+                                            {activeSectorData.channels?.filter(c=>c.type===type).map(ch => (
+                                                <div key={ch.id} className="flex group">
+                                                    <div onClick={() => { onChannelSelect(ch); closeMobile(); }} 
+                                                        className={`flex-1 flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded transition 
+                                                        ${activeChannel?.id === ch.id ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-400 hover:text-white hover:bg-slate-800/50'}`}>
+                                                        <i className={`fa-solid ${type==='voice'?'fa-wave-square':'fa-hashtag'} text-[10px] opacity-50`}></i>
+                                                        <span className="text-sm font-medium truncate">{ch.name}</span>
+                                                    </div>
+                                                    {isOwner && adminMode && <button onClick={() => handleDeleteChannel(ch.id)} className="px-2 text-red-500 hover:bg-red-900/20"><i className="fa-solid fa-xmark text-xs"></i></button>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </>
+                        ) : <div className="text-center p-4 text-gray-600 text-xs font-mono">NO DATA</div>}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="p-3 border-t border-slate-800 bg-[#0f172a]">
+                        {isOwner && activeSectorId !== 'dms' && (
+                            <button onClick={handleInvite} className="w-full mb-3 py-1.5 border border-dashed border-gray-600 text-gray-400 font-mono text-[10px] hover:border-cyber-blue hover:text-cyber-blue transition uppercase">
+                                Generate Key
                             </button>
-                         )}
-                         <div className="flex items-center gap-2 p-2 bg-gray-900/50 border border-gray-800">
-                             <img src={user.photoURL || generateAvatar(user.displayName)} className="w-8 h-8 border border-gray-600" />
-                             <div className="flex-1 min-w-0">
-                                 <div className="text-xs text-white font-bold truncate">{user.displayName}</div>
-                                 <div className="text-[9px] text-cyber-green font-mono">ONLINE</div>
-                             </div>
-                             <button onClick={() => auth.signOut()} className="text-gray-500 hover:text-red-500"><i className="fa-solid fa-power-off"></i></button>
-                         </div>
+                        )}
+                        <div className="flex items-center gap-3">
+                            <img src={user.photoURL || generateAvatar(user.displayName)} className="w-9 h-9 border border-slate-600 rounded bg-black object-cover" />
+                            <div className="flex-1 min-w-0">
+                                <div className="text-xs text-white font-bold truncate">{user.displayName}</div>
+                                <div className="text-[9px] text-cyber-green font-mono">CONNECTED</div>
+                            </div>
+                            <button onClick={() => auth.signOut()} className="text-gray-500 hover:text-red-500"><i className="fa-solid fa-power-off"></i></button>
+                        </div>
                     </div>
                 </div>
             );
         };
 
-        // 3. MAIN TERMINAL (Chat Area)
-        const MainTerminal = ({ channel, user, onViewProfile, isMapOpen, toggleMap, activeSectorName }) => {
+        // 2. Chat Terminal (Center)
+        const ChatTerminal = ({ channel, user, onViewProfile, toggleMap, toggleSystems, activeSectorName }) => {
             const [messages, setMessages] = useState([]);
             const [inputText, setInputText] = useState("");
             const bottomRef = useRef();
@@ -363,48 +346,36 @@
             };
 
             return (
-                <div className="flex-1 flex flex-col min-w-0 bg-[#030508] relative">
-                    {/* Top Bar */}
-                    <div className="h-14 border-b border-gray-800 flex items-center justify-between px-4 bg-[#05080c] flex-shrink-0">
+                <div className="flex-1 flex flex-col min-w-0 bg-[#050a14] relative">
+                    {/* Header */}
+                    <div className="h-14 border-b border-slate-800 bg-[#0f172a]/90 backdrop-blur flex items-center justify-between px-4 sticky top-0 z-20">
                         <div className="flex items-center gap-4">
-                            <button onClick={toggleMap} className={`flex items-center gap-2 px-4 py-1.5 border ${isMapOpen ? 'border-cyber-blue text-cyber-blue' : 'border-gray-700 text-gray-400 hover:border-white hover:text-white'} transition font-mono text-sm`}>
-                                <i className="fa-solid fa-map"></i>
-                                <span className="hidden md:inline">NAVIGATE SECTORS</span>
-                            </button>
-                            <div className="h-6 w-[1px] bg-gray-800"></div>
+                            <button onClick={toggleSystems} className="md:hidden text-cyber-blue"><i className="fa-solid fa-bars text-xl"></i></button>
+                            <button onClick={toggleMap} className="text-gray-400 hover:text-cyber-blue transition"><i className="fa-solid fa-map"></i></button>
+                            <div className="h-4 w-[1px] bg-slate-700"></div>
                             <div>
-                                <h1 className="text-white font-bold tracking-wider text-sm">{activeSectorName}</h1>
-                                <div className="text-[10px] text-cyber-blue font-mono">{channel ? `// FREQUENCY: ${channel.name}` : '// STANDBY'}</div>
+                                <h1 className="text-white font-bold text-sm tracking-wide">{activeSectorName}</h1>
+                                <p className="text-[10px] text-cyber-blue font-mono">{channel ? `// ${channel.name}` : '// OFFLINE'}</p>
                             </div>
                         </div>
-                        <div className="font-mono text-xs text-gray-600 hidden md:block">OMNI-MEDIA TERMINAL v7.0</div>
                     </div>
 
-                    {/* Viewport */}
+                    {/* Messages */}
                     {channel ? (
-                        <>
-                        <div className="flex-1 overflow-y-auto custom-scroll p-4 space-y-6 relative">
-                            {/* Grid overlay for aesthetic */}
-                            <div className="absolute inset-0 pointer-events-none opacity-[0.02]" style={{backgroundImage: 'linear-gradient(#00f0ff 1px, transparent 1px), linear-gradient(90deg, #00f0ff 1px, transparent 1px)', backgroundSize: '40px 40px'}}></div>
-                            
-                            <div className="flex flex-col items-center justify-center py-10 opacity-50">
-                                <i className="fa-solid fa-satellite-dish text-4xl text-gray-700 mb-2"></i>
-                                <div className="text-xs font-mono text-gray-500">BEGIN TRANSMISSION LOG</div>
-                            </div>
-
-                            {messages.map((msg, i) => {
+                        <div className="flex-1 overflow-y-auto custom-scroll p-4 space-y-4">
+                             {messages.map((msg, i) => {
                                 const isMe = msg.uid === user.uid;
                                 return (
-                                    <div key={i} className={`flex gap-4 ${isMe ? 'flex-row-reverse' : ''} group`}>
-                                        <img src={msg.photoURL || generateAvatar(msg.displayName)} className="w-10 h-10 border border-gray-700 p-0.5 bg-black object-cover" />
-                                        <div className={`flex flex-col max-w-[80%] ${isMe ? 'items-end' : ''}`}>
+                                    <div key={i} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''} group anim-fade`}>
+                                        <img onClick={() => onViewProfile({uid: msg.uid, displayName: msg.displayName, photoURL: msg.photoURL})} src={msg.photoURL || generateAvatar(msg.displayName)} className="w-8 h-8 rounded border border-slate-700 object-cover cursor-pointer" />
+                                        <div className={`flex flex-col max-w-[85%] ${isMe ? 'items-end' : ''}`}>
                                             <div className="flex items-baseline gap-2 mb-1">
-                                                <span className={`text-sm font-bold ${isMe ? 'text-cyber-blue' : 'text-gray-300'}`}>{msg.displayName}</span>
-                                                <span className="text-[10px] text-gray-600 font-mono">{new Date(msg.timestamp).toLocaleTimeString()}</span>
+                                                <span className={`text-xs font-bold ${isMe ? 'text-cyber-blue' : 'text-gray-400'}`}>{msg.displayName}</span>
+                                                <span className="text-[9px] text-gray-600 font-mono">{new Date(msg.timestamp * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                                             </div>
-                                            <div className={`px-4 py-2 text-sm border ${isMe ? 'bg-cyber-blue/5 border-cyber-blue/30 text-gray-200' : 'bg-[#0f172a] border-gray-700 text-gray-300'}`}>
+                                            <div className={`px-3 py-2 text-sm rounded ${isMe ? 'bg-cyber-blue/10 border border-cyber-blue/30 text-gray-200' : 'bg-[#0f172a] border border-slate-700 text-gray-300'}`}>
                                                 <RichText text={msg.text} />
-                                                {msg.imageURL && <img src={msg.imageURL} className="mt-2 max-w-sm border border-gray-700" />}
+                                                {msg.imageURL && <img src={msg.imageURL} className="mt-2 rounded border border-slate-700 max-w-full" />}
                                             </div>
                                         </div>
                                     </div>
@@ -412,26 +383,21 @@
                             })}
                             <div ref={bottomRef}></div>
                         </div>
-
-                        {/* Input Deck */}
-                        <div className="p-4 bg-[#05080c] border-t border-gray-800">
-                            <form onSubmit={sendMessage} className="flex gap-0 border border-gray-700 focus-within:border-cyber-blue transition-colors bg-black p-1">
-                                <label className="w-10 flex items-center justify-center text-gray-500 hover:text-white cursor-pointer hover:bg-gray-900 transition">
-                                    <i className="fa-solid fa-plus"></i>
-                                    <input type="file" className="hidden" onChange={handleUpload} />
-                                </label>
-                                <input value={inputText} onChange={e=>setInputText(e.target.value)} placeholder="ENTER DATA..." className="flex-1 bg-transparent border-none outline-none text-white font-mono px-4" />
-                                <button type="submit" className="px-6 py-2 bg-gray-900 text-cyber-blue font-bold font-mono text-sm hover:bg-cyber-blue/10 transition">TRANSMIT</button>
-                            </form>
-                        </div>
-                        </>
                     ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center text-gray-600 font-mono">
-                            <div className="w-20 h-20 border border-gray-700 rounded-full flex items-center justify-center animate-pulse mb-4">
-                                <i className="fa-solid fa-wifi text-2xl"></i>
-                            </div>
-                            <p>NO FREQUENCY SELECTED</p>
-                            <p className="text-xs mt-2 text-cyber-blue cursor-pointer hover:underline" onClick={toggleMap}>OPEN SECTOR MAP</p>
+                        <div className="flex-1 flex flex-col items-center justify-center text-gray-600">
+                            <i className="fa-solid fa-satellite-dish text-4xl mb-4 opacity-30"></i>
+                            <p className="font-mono text-xs">NO SIGNAL</p>
+                        </div>
+                    )}
+
+                    {/* Input */}
+                    {channel && (
+                        <div className="p-3 border-t border-slate-800 bg-[#0f172a]">
+                            <form onSubmit={sendMessage} className="flex gap-2 bg-[#050a14] border border-slate-700 rounded px-2 py-1 focus-within:border-cyber-blue transition-colors">
+                                <label className="p-2 text-gray-500 hover:text-white cursor-pointer"><i className="fa-solid fa-plus"></i><input type="file" className="hidden" onChange={handleUpload} /></label>
+                                <input value={inputText} onChange={e=>setInputText(e.target.value)} placeholder="Transmit..." className="flex-1 bg-transparent border-none outline-none text-white font-mono text-sm" />
+                                <button type="submit" className="px-3 text-cyber-blue hover:text-white"><i className="fa-solid fa-paper-plane"></i></button>
+                            </form>
                         </div>
                     )}
                 </div>
@@ -446,6 +412,7 @@
             const [activeSectorId, setActiveSectorId] = useState('global');
             const [activeChannel, setActiveChannel] = useState(null);
             const [isMapOpen, setIsMapOpen] = useState(false);
+            const [systemsOpen, setSystemsOpen] = useState(false); // Mobile drawer state
             const [targetProfile, setTargetProfile] = useState(null);
 
             useEffect(() => {
@@ -455,8 +422,15 @@
                 socket.on('init_data', (data) => { 
                     setSectors(data.sectors); 
                     setDms(data.dms);
+                    
+                    // AUTO-SELECT GLOBAL & GENERAL
                     const global = data.sectors.find(s=>s.id==='global');
-                    if(global && global.channels) setActiveChannel(global.channels[0]);
+                    if(global && global.channels) {
+                         // Default to 'global' ID
+                         setActiveSectorId('global');
+                         // Default to first channel (General)
+                         setActiveChannel(global.channels[0]);
+                    }
                 });
                 socket.on('update_sectors', setSectors);
                 socket.on('update_dms', setDms);
@@ -466,65 +440,58 @@
             const activeSectorData = activeSectorId === 'dms' ? null : sectors.find(s => s.id === activeSectorId);
             const isOwner = activeSectorData && user ? activeSectorData.ownerId === user.uid : false;
 
-            const handleCreateSector = () => {
-                const name = prompt("DESIGNATE NEW SECTOR NAME:");
-                if(name) socket.emit('create_sector', { name, ownerId: user.uid });
-            };
+            const handleCreateSector = () => { const n = prompt("NAME:"); if(n) socket.emit('create_sector', { name: n, ownerId: user.uid }); };
+            const handleCreateChannel = (t) => { const n = prompt("NAME:"); if(n) socket.emit('create_channel', { sectorId: activeSectorId, name: n, type: t }); };
 
-            const handleCreateChannel = (type) => {
-                const name = prompt(`DESIGNATE NEW ${type.toUpperCase()} FREQUENCY:`);
-                if(name) socket.emit('create_channel', { sectorId: activeSectorId, name, type });
-            };
-
-            if (!user) {
-                return (
-                    <div className="h-full w-full flex items-center justify-center bg-black relative overflow-hidden">
-                        <div className="absolute inset-0 bg-[linear-gradient(45deg,#0a0f16_25%,transparent_25%,transparent_75%,#0a0f16_75%,#0a0f16),linear-gradient(45deg,#0a0f16_25%,transparent_25%,transparent_75%,#0a0f16_75%,#0a0f16)]" style={{backgroundSize: '20px 20px', opacity: 0.1}}></div>
-                        <div className="z-10 p-10 border border-gray-800 bg-[#05080c]/90 backdrop-blur text-center flex flex-col gap-6 shadow-2xl relative">
-                            <div className="absolute top-0 left-0 w-2 h-2 bg-cyber-blue"></div><div className="absolute top-0 right-0 w-2 h-2 bg-cyber-blue"></div>
-                            <div className="absolute bottom-0 left-0 w-2 h-2 bg-cyber-blue"></div><div className="absolute bottom-0 right-0 w-2 h-2 bg-cyber-blue"></div>
-                            
-                            <h1 className="text-5xl font-bold text-white font-sans tracking-widest">OMNI<span className="text-cyber-blue">MEDIA</span></h1>
-                            <div className="font-mono text-xs text-gray-500 tracking-[0.3em]">SECURE QUANTUM LINK</div>
-                            <button onClick={() => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())} className="py-3 px-8 bg-white text-black font-bold hover:bg-cyber-blue hover:text-white transition font-mono tracking-wider">INITIALIZE LOGIN</button>
-                        </div>
+            if (!user) return (
+                <div className="h-full w-full flex items-center justify-center bg-black">
+                    <div className="cyber-border p-8 bg-[#0f172a] text-center max-w-sm w-full">
+                        <h1 className="text-4xl font-bold text-white mb-2 font-sans tracking-widest">OMNI<span className="text-cyber-blue">MEDIA</span></h1>
+                        <p className="font-mono text-xs text-gray-500 mb-6 tracking-[0.3em]">SECURE TERMINAL</p>
+                        <button onClick={() => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())} className="w-full py-3 bg-white text-black font-bold hover:bg-cyber-blue hover:text-white transition uppercase font-mono">Authenticate</button>
                     </div>
-                );
-            }
+                </div>
+            );
 
             return (
-                <div className="flex h-full w-full bg-[#030508]">
-                    {isMapOpen && (
-                        <SectorMap 
-                            sectors={sectors} 
-                            user={user} 
-                            onSelect={(id) => { setActiveSectorId(id); setActiveChannel(null); setIsMapOpen(false); }} 
-                            onClose={() => setIsMapOpen(false)}
-                            onCreateSector={handleCreateSector}
-                        />
-                    )}
+                <div className="flex h-full w-full overflow-hidden bg-[#050a14]">
+                    {/* Navigation Modal */}
+                    {isMapOpen && <SectorMap sectors={sectors} user={user} onSelect={(id) => { setActiveSectorId(id); setIsMapOpen(false); 
+                        // Auto-select first channel when switching sectors
+                        if(id !== 'dms') {
+                            const sec = sectors.find(s=>s.id===id);
+                            if(sec && sec.channels) setActiveChannel(sec.channels[0]);
+                        } else { setActiveChannel(null); }
+                    }} onClose={() => setIsMapOpen(false)} onCreateSector={handleCreateSector} />}
 
-                    <MainTerminal 
-                        channel={activeChannel} 
-                        user={user} 
-                        onViewProfile={setTargetProfile} 
-                        isMapOpen={isMapOpen} 
-                        toggleMap={() => setIsMapOpen(!isMapOpen)}
-                        activeSectorName={activeSectorId === 'dms' ? 'DIRECT LINKS' : (activeSectorData?.name || 'UNKNOWN')}
-                    />
-
+                    {/* Left Sidebar (Systems) */}
                     <SystemsPanel 
-                        activeSectorData={activeSectorData} 
-                        activeChannel={activeChannel}
-                        onChannelSelect={setActiveChannel}
-                        user={user}
-                        onCreateChannel={handleCreateChannel}
-                        isOwner={isOwner}
-                        socket={socket}
-                        dms={dms}
-                        activeSectorId={activeSectorId}
+                        activeSectorData={activeSectorData} activeChannel={activeChannel}
+                        onChannelSelect={setActiveChannel} user={user} onCreateChannel={handleCreateChannel}
+                        isOwner={isOwner} socket={socket} dms={dms} activeSectorId={activeSectorId}
                         onSelectDM={(dm) => { setActiveSectorId('dms'); setActiveChannel(dm); }}
+                        mobileOpen={systemsOpen} closeMobile={() => setSystemsOpen(false)}
                     />
+
+                    {/* Center Chat */}
+                    <ChatTerminal 
+                        channel={activeChannel} user={user} onViewProfile={setTargetProfile}
+                        toggleMap={() => setIsMapOpen(true)} toggleSystems={() => setSystemsOpen(true)}
+                        activeSectorName={activeSectorId === 'dms' ? 'DIRECT LINK' : (activeSectorData?.name || 'UNKNOWN')}
+                    />
+
+                    {/* Profile Modal Placeholder (Simplified) */}
+                    {targetProfile && (
+                        <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur flex items-center justify-center p-4" onClick={() => setTargetProfile(null)}>
+                            <div className="bg-[#0f172a] cyber-border p-6 max-w-sm w-full relative" onClick={e=>e.stopPropagation()}>
+                                <img src={targetProfile.photoURL || generateAvatar(targetProfile.displayName)} className="w-20 h-20 border border-slate-600 mx-auto mb-4" />
+                                <h2 className="text-xl font-bold text-white text-center">{targetProfile.displayName}</h2>
+                                <p className="text-center text-xs text-cyber-blue font-mono mb-4">{targetProfile.uid}</p>
+                                <p className="text-gray-400 text-sm text-center mb-6">{targetProfile.bio || "No tactical data."}</p>
+                                <button onClick={() => setTargetProfile(null)} className="w-full py-2 border border-slate-700 text-gray-400 hover:text-white hover:border-white">CLOSE</button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
