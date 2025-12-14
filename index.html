@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Omni-OS v6.3 (Socket Fix)</title>
+    <title>Omni-OS v6.5 (Stable)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -46,23 +46,16 @@
         const { useState, useEffect, useRef } = React;
 
         // --- ROBUST SOCKET CONNECTION ---
-        // 1. Determine URL: Use the current window origin (standard for HF Spaces)
-        const SERVER_URL = window.location.origin; 
-        
-        // 2. Initialize with Polling fallback (Fixes HF firewall issues)
-        console.log("Attempting Socket Connection to:", SERVER_URL);
-        const socket = io(SERVER_URL, {
-            transports: ['polling', 'websocket'], // Polling first is safer
-            path: '/socket.io/',
-            reconnectionAttempts: 10,
-            timeout: 10000,
-            autoConnect: true
+        // Simplified connection because main.py now serves this file directly
+        const socket = io({
+            transports: ['polling', 'websocket'],
+            reconnectionAttempts: 15,
+            timeout: 10000
         });
 
-        // Debugging Events
-        socket.on("connect_error", (err) => {
-            console.error("Socket Connection Failed:", err.message);
-        });
+        // Debugging
+        socket.on("connect", () => console.log("Socket Connected!"));
+        socket.on("connect_error", (err) => console.error("Socket Error:", err));
 
         // --- UTILS ---
         const compressImage = (file, maxWidth = 400) => {
