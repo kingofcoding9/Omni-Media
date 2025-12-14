@@ -182,7 +182,6 @@
 
         // --- SECTOR MAP (MODAL) ---
         const SectorMap = ({ sectors, onSelect, onClose, user, onCreateSector, onDeleteSector, onGlobal }) => {
-            // Filter out 'global' from the regular list since we have a special button for it
             const mySectors = sectors.filter(s => s.id !== 'global' && ((s.members && s.members.includes(user.uid)) || s.ownerId === user.uid || s.isPublic));
             const [code, setCode] = useState("");
 
@@ -204,13 +203,9 @@
                         </div>
 
                         <div className="flex-1 overflow-y-auto custom-scroll pb-4">
-                            
-                            {/* --- THE UNIVERSAL SECTOR BUTTON --- */}
                             <div onClick={onGlobal} className="w-full h-32 mb-8 relative group cursor-pointer border border-cyber-blue/30 bg-cyber-blue/5 overflow-hidden rounded-lg epic-glow transition-all transform hover:scale-[1.01]">
                                 <div className="absolute inset-0 bg-cyber-blue/5 group-hover:bg-cyber-blue/10 transition"></div>
-                                {/* Animated Grid Background */}
                                 <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'linear-gradient(#00f0ff 1px, transparent 1px), linear-gradient(90deg, #00f0ff 1px, transparent 1px)', backgroundSize: '30px 30px'}}></div>
-                                
                                 <div className="relative z-10 flex items-center h-full px-8 gap-6">
                                     <div className="w-16 h-16 bg-[#050a14] border border-cyber-blue rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(0,240,255,0.3)] animate-pulse-glow">
                                         <i className="fa-solid fa-earth-americas text-4xl text-cyber-blue"></i>
@@ -228,7 +223,6 @@
                                     </div>
                                 </div>
                             </div>
-                            {/* --------------------------------------- */}
 
                             <h3 className="text-xs font-mono text-gray-500 mb-4 uppercase tracking-widest border-b border-slate-800 pb-1 w-full">Personal Sectors</h3>
 
@@ -275,105 +269,215 @@
             );
         };
 
-        // --- MAIN LAYOUT COMPONENTS ---
-
-        // 1. Systems Panel (Left Sidebar)
-        const SystemsPanel = ({ activeSectorData, activeChannel, onChannelSelect, user, onCreateChannel, isOwner, socket, dms, activeSectorId, onSelectDM, mobileOpen, closeMobile }) => {
-            const [adminMode, setAdminMode] = useState(false);
+        // --- VOICE STAGE (WEB RTC) ---
+        const VoiceStage = ({ channel, user, onDisconnect, activeSectorName }) => {
+            const [users, setUsers] = useState([]);
+            const [peers, setPeers] = useState({});
+            const [streams, setStreams] = useState({});
+            const [isMuted, setIsMuted] = useState(false);
+            const [isSharing, setIsSharing] = useState(false);
+            const localStreamRef = useRef(null);
+            const [showChat, setShowChat] = useState(false);
             
-            const handleDeleteChannel = (channelId) => {
-                if(confirm("Confirm Deletion?")) socket.emit('delete_channel', { sectorId: activeSectorData.id, channelId });
-            };
-            const handleInvite = () => {
-                const code = activeSectorData.inviteCode || "REQ-ADMIN";
-                prompt("SECTOR ACCESS KEY:", code);
+            // Audio Refs for volume control
+            const audioRefs = useRef({});
+
+            useEffect(() => {
+                const initVoice = async () => {
+                    try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                        localStreamRef.current = stream;
+                        
+                        // Join
+                        socket.emit('join_voice', { channelId: channel.id, uid: user.uid });
+                        
+                        socket.on('all_voice_users', (allUsers) => {
+                            // Initiator Logic: Connect to all existing users
+                            const newPeers = {};
+                            allUsers.forEach(targetId => {
+                                if (targetId === user.uid) return;
+                                const peer = createPeer(targetId, socket, stream, true); // true = initiator
+                                newPeers[targetId] = peer;
+                            });
+                            setPeers(prev => ({...prev, ...newPeers}));
+                            setUsers(allUsers);
+                        });
+
+                        socket.on('user_joined_voice', (data) => {
+                             // Joiner Logic: Wait for offer, but we need a peer ready?
+                             // Actually, in simple mesh, the joiner initiates? Or the existing users initiate?
+                             // Let's rely on 'voice_signal' to create the peer if it doesn't exist for the receiver side.
+                             // But we need to know they exist.
+                             setUsers(prev => [...prev, data.uid]);
+                        });
+
+                        socket.on('user_left_voice', (data) => {
+                             if (peers[data.uid]) peers[data.uid].destroy(); // Simple destroy if library, else close
+                             const newPeers = {...peers}; delete newPeers[data.uid]; setPeers(newPeers);
+                             const newStreams = {...streams}; delete newStreams[data.uid]; setStreams(newStreams);
+                             setUsers(prev => prev.filter(u => u !== data.uid));
+                        });
+
+                        socket.on('voice_signal', async (data) => {
+                            const { sender, signal } = data;
+                            let peer = peers[sender];
+                            
+                            // If we receive a signal from someone we don't have a peer for, create it (Receiver)
+                            if (!peer) {
+                                peer = createPeer(sender, socket, stream, false);
+                                setPeers(prev => ({...prev, [sender]: peer}));
+                            }
+                            
+                            if (signal.type === 'offer') {
+                                await peer.setRemoteDescription(new RTCSessionDescription(signal));
+                                const answer = await peer.createAnswer();
+                                await peer.setLocalDescription(answer);
+                                socket.emit('voice_signal', { target: sender, signal: answer, uid: user.uid });
+                            } else if (signal.type === 'answer') {
+                                await peer.setRemoteDescription(new RTCSessionDescription(signal));
+                            } else if (signal.candidate) {
+                                await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
+                            }
+                        });
+
+                    } catch(e) { console.error(e); alert("Microphone Access Denied"); onDisconnect(); }
+                };
+
+                initVoice();
+
+                return () => {
+                    if(localStreamRef.current) localStreamRef.current.getTracks().forEach(t=>t.stop());
+                    socket.emit('leave_voice', { channelId: channel.id, uid: user.uid });
+                    socket.off('all_voice_users');
+                    socket.off('user_joined_voice');
+                    socket.off('user_left_voice');
+                    socket.off('voice_signal');
+                    // Close all peers
+                    Object.values(peers).forEach(p => p.close());
+                };
+            }, [channel.id]);
+
+            const createPeer = (targetId, socket, stream, initiator) => {
+                const peer = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+                stream.getTracks().forEach(track => peer.addTrack(track, stream));
+
+                peer.onicecandidate = (e) => {
+                    if (e.candidate) socket.emit('voice_signal', { target: targetId, signal: { candidate: e.candidate }, uid: user.uid, sender: user.uid });
+                };
+
+                peer.ontrack = (e) => {
+                    setStreams(prev => ({...prev, [targetId]: e.streams[0]}));
+                };
+
+                if (initiator) {
+                    peer.createOffer().then(offer => {
+                        peer.setLocalDescription(offer);
+                        socket.emit('voice_signal', { target: targetId, signal: offer, uid: user.uid, sender: user.uid });
+                    });
+                }
+
+                return peer;
             };
 
-            const panelClass = `fixed inset-y-0 left-0 w-64 bg-[#050a14] border-r border-slate-800 transform transition-transform duration-300 z-40 
-                ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 flex flex-col`;
+            const toggleMute = () => {
+                if(localStreamRef.current) {
+                    localStreamRef.current.getAudioTracks()[0].enabled = !localStreamRef.current.getAudioTracks()[0].enabled;
+                    setIsMuted(!isMuted);
+                }
+            };
+            
+            const handleShareScreen = async () => {
+                if(!isSharing) {
+                    try {
+                        const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                        const videoTrack = screenStream.getVideoTracks()[0];
+                        
+                        Object.values(peers).forEach(peer => {
+                            const sender = peer.getSenders().find(s => s.track.kind === 'video');
+                            if(sender) sender.replaceTrack(videoTrack);
+                            else peer.addTrack(videoTrack, screenStream);
+                        });
+                        
+                        videoTrack.onended = () => { handleShareScreen(); }; // Recursive toggle off
+                        setIsSharing(true);
+                    } catch(e) { console.error(e); }
+                } else {
+                    // Stop sharing (logic implies switching back to camera or just stopping)
+                    // For now simplest is just stop track
+                    setIsSharing(false);
+                    // Re-negotiation might be needed for full switch back
+                }
+            };
+            
+            const handleVolume = (uid, val) => {
+                if(audioRefs.current[uid]) audioRefs.current[uid].volume = val;
+            };
 
             return (
-                <div className={panelClass}>
-                    {/* Header */}
-                    <div className="h-14 border-b border-slate-800 flex items-center justify-between px-4 bg-[#0f172a]">
-                        <div>
-                            <h2 className="text-cyber-blue font-mono text-[10px] tracking-widest">SYSTEMS</h2>
-                            <h3 className="font-bold text-white text-sm truncate w-40">{activeSectorId === 'dms' ? 'DIRECT UPLINKS' : (activeSectorData?.name || 'LOADING...')}</h3>
-                        </div>
-                        <button onClick={closeMobile} className="md:hidden text-gray-500"><i className="fa-solid fa-xmark"></i></button>
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 overflow-y-auto custom-scroll p-2">
-                        {activeSectorId === 'dms' ? (
-                            <div className="space-y-1">
-                                {dms.map(dm => {
-                                    const otherId = dm.participants.find(p => p !== user.uid);
-                                    const name = dm.names ? dm.names[otherId] : "Unknown";
-                                    return (
-                                        <div key={dm.id} onClick={() => { onSelectDM({id: dm.id, name, type: 'dm'}); closeMobile(); }} 
-                                            className={`p-2 flex items-center gap-3 cursor-pointer rounded hover:bg-slate-800 border border-transparent ${activeChannel?.id === dm.id ? 'bg-slate-800 border-cyber-blue/50' : ''}`}>
-                                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-xs font-bold text-gray-500 border border-slate-700">{name[0]}</div>
-                                            <span className="text-sm text-gray-300 truncate">{name}</span>
-                                        </div>
-                                    )
-                                })}
+                <div className="flex-1 flex bg-[#050a14] relative overflow-hidden">
+                    <div className="flex-1 flex flex-col">
+                        {/* Header */}
+                        <div className="h-14 border-b border-slate-800 bg-[#0f172a] flex items-center justify-between px-4">
+                            <div className="flex items-center gap-3">
+                                <i className="fa-solid fa-signal text-cyber-green animate-pulse"></i>
+                                <div>
+                                    <h2 className="text-white font-bold">{channel.name}</h2>
+                                    <p className="text-[10px] text-cyber-blue font-mono">VOICE SECURE • {users.length} CONNECTED</p>
+                                </div>
                             </div>
-                        ) : activeSectorData ? (
-                            <>
-                                {isOwner && (
-                                    <div className="mb-4 px-2 py-2 bg-red-900/10 border border-red-900/30 rounded flex items-center justify-between">
-                                        <span className="text-[10px] text-red-400 font-mono">ADMIN OVERRIDE</span>
-                                        <input type="checkbox" checked={adminMode} onChange={() => setAdminMode(!adminMode)} className="accent-red-500" />
+                            <button onClick={()=>setShowChat(!showChat)} className={`p-2 rounded hover:bg-slate-800 ${showChat ? 'text-cyber-blue' : 'text-gray-400'}`}><i className="fa-solid fa-message"></i></button>
+                        </div>
+                        
+                        {/* Grid */}
+                        <div className="flex-1 p-4 overflow-y-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 align-start content-start">
+                            {users.map(uid => (
+                                <div key={uid} className="bg-[#0f172a] cyber-border p-4 flex flex-col items-center gap-3 relative h-48 justify-center">
+                                    <div className="relative">
+                                        <img src={`https://ui-avatars.com/api/?name=${uid}&background=000&color=fff`} className="w-16 h-16 rounded-full border-2 border-slate-700" />
+                                        {uid === user.uid && isMuted && <div className="absolute -bottom-1 -right-1 bg-red-500 rounded-full p-1 text-[8px]"><i className="fa-solid fa-microphone-slash"></i></div>}
                                     </div>
-                                )}
-                                {['text', 'voice'].map(type => (
-                                    <div key={type} className="mb-6">
-                                        <div className="flex items-center justify-between px-2 mb-2">
-                                            <span className="text-[10px] font-mono text-gray-500 uppercase tracking-widest">{type} FEED</span>
-                                            {isOwner && adminMode && <button onClick={() => onCreateChannel(type)} className="text-cyber-green text-xs"><i className="fa-solid fa-plus"></i></button>}
+                                    <div className="text-white font-bold text-sm truncate w-full text-center">{uid === user.uid ? 'YOU' : uid}</div>
+                                    
+                                    {/* Remote Audio */}
+                                    {uid !== user.uid && (
+                                        <div className="w-full mt-2">
+                                            <audio ref={el => {
+                                                if(el && streams[uid]) el.srcObject = streams[uid];
+                                                audioRefs.current[uid] = el;
+                                            }} autoPlay />
+                                            <input type="range" min="0" max="1" step="0.1" defaultValue="1" onChange={(e) => handleVolume(uid, e.target.value)} className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyber-blue" />
                                         </div>
-                                        <div className="space-y-0.5">
-                                            {activeSectorData.channels?.filter(c=>c.type===type).map(ch => (
-                                                <div key={ch.id} className="flex group">
-                                                    <div onClick={() => { onChannelSelect(ch); closeMobile(); }} 
-                                                        className={`flex-1 flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded transition 
-                                                        ${activeChannel?.id === ch.id ? 'bg-slate-800 text-white shadow-sm' : 'text-gray-400 hover:text-white hover:bg-slate-800/50'}`}>
-                                                        <i className={`fa-solid ${type==='voice'?'fa-wave-square':'fa-hashtag'} text-[10px] opacity-50`}></i>
-                                                        <span className="text-sm font-medium truncate">{ch.name}</span>
-                                                    </div>
-                                                    {isOwner && adminMode && <button onClick={() => handleDeleteChannel(ch.id)} className="px-2 text-red-500 hover:bg-red-900/20"><i className="fa-solid fa-xmark text-xs"></i></button>}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                ))}
-                            </>
-                        ) : <div className="text-center p-4 text-gray-600 text-xs font-mono">NO DATA</div>}
-                    </div>
-
-                    {/* Footer */}
-                    <div className="p-3 border-t border-slate-800 bg-[#0f172a]">
-                        {isOwner && activeSectorId !== 'dms' && (
-                            <button onClick={handleInvite} className="w-full mb-3 py-1.5 border border-dashed border-gray-600 text-gray-400 font-mono text-[10px] hover:border-cyber-blue hover:text-cyber-blue transition uppercase">
-                                Generate Key
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        
+                        {/* Controls */}
+                        <div className="h-20 bg-[#0f172a] border-t border-slate-800 flex items-center justify-center gap-6">
+                            <button onClick={toggleMute} className={`w-12 h-12 rounded-full flex items-center justify-center transition ${isMuted ? 'bg-red-500 text-white' : 'bg-slate-800 text-gray-300 hover:bg-slate-700'}`}>
+                                <i className={`fa-solid ${isMuted ? 'fa-microphone-slash' : 'fa-microphone'}`}></i>
                             </button>
-                        )}
-                        <div className="flex items-center gap-3">
-                            <img src={user.photoURL || generateAvatar(user.displayName)} className="w-9 h-9 border border-slate-600 rounded bg-black object-cover" />
-                            <div className="flex-1 min-w-0">
-                                <div className="text-xs text-white font-bold truncate">{user.displayName}</div>
-                                <div className="text-[9px] text-cyber-green font-mono">CONNECTED</div>
-                            </div>
-                            <button onClick={() => auth.signOut()} className="text-gray-500 hover:text-red-500"><i className="fa-solid fa-power-off"></i></button>
+                            <button onClick={onDisconnect} className="px-8 h-12 rounded-full bg-red-600 hover:bg-red-700 text-white font-bold font-mono tracking-widest border border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)]">
+                                DISCONNECT
+                            </button>
+                            <button onClick={handleShareScreen} className={`w-12 h-12 rounded-full flex items-center justify-center transition ${isSharing ? 'bg-cyber-blue text-black' : 'bg-slate-800 text-gray-300 hover:bg-slate-700'}`}>
+                                <i className="fa-solid fa-desktop"></i>
+                            </button>
                         </div>
                     </div>
+
+                    {/* Side Chat */}
+                    {showChat && (
+                        <div className="w-80 border-l border-slate-800 bg-[#050a14] flex flex-col">
+                             <ChatTerminal channel={channel} user={user} activeSectorName="VOICE COMMS" onGlobal={()=>{}} isEmbedded={true} />
+                        </div>
+                    )}
                 </div>
             );
         };
 
-        // 2. Chat Terminal (Center)
-        const ChatTerminal = ({ channel, user, onViewProfile, toggleMap, toggleSystems, activeSectorName, onGlobal }) => {
+        // 2. Chat Terminal (Refactored to accept embedded prop)
+        const ChatTerminal = ({ channel, user, onViewProfile, toggleMap, toggleSystems, activeSectorName, onGlobal, isEmbedded }) => {
             const [messages, setMessages] = useState([]);
             const [inputText, setInputText] = useState("");
             const bottomRef = useRef();
@@ -407,24 +511,26 @@
 
             return (
                 <div className="flex-1 flex flex-col min-w-0 bg-[#050a14] relative">
-                    {/* Header */}
-                    <div className="h-14 border-b border-slate-800 bg-[#0f172a]/90 backdrop-blur flex items-center justify-between px-4 sticky top-0 z-20 gap-2">
-                        <div className="flex items-center gap-4 flex-1">
-                            <button onClick={toggleSystems} className="md:hidden text-cyber-blue"><i className="fa-solid fa-bars text-xl"></i></button>
-                            <button onClick={toggleMap} className="text-gray-400 hover:text-cyber-blue transition"><i className="fa-solid fa-map"></i></button>
-                            <div className="h-4 w-[1px] bg-slate-700"></div>
-                            <div className="min-w-0">
-                                <h1 className="text-white font-bold text-sm tracking-wide truncate">{activeSectorName}</h1>
-                                <p className="text-[10px] text-cyber-blue font-mono truncate">{channel ? `// ${channel.name}` : '// OFFLINE'}</p>
+                    {/* Header - Hidden if embedded */}
+                    {!isEmbedded && (
+                        <div className="h-14 border-b border-slate-800 bg-[#0f172a]/90 backdrop-blur flex items-center justify-between px-4 sticky top-0 z-20 gap-2">
+                            <div className="flex items-center gap-4 flex-1">
+                                <button onClick={toggleSystems} className="md:hidden text-cyber-blue"><i className="fa-solid fa-bars text-xl"></i></button>
+                                <button onClick={toggleMap} className="text-gray-400 hover:text-cyber-blue transition"><i className="fa-solid fa-map"></i></button>
+                                <div className="h-4 w-[1px] bg-slate-700"></div>
+                                <div className="min-w-0">
+                                    <h1 className="text-white font-bold text-sm tracking-wide truncate">{activeSectorName}</h1>
+                                    <p className="text-[10px] text-cyber-blue font-mono truncate">{channel ? `// ${channel.name}` : '// OFFLINE'}</p>
+                                </div>
                             </div>
+                            
+                            <button onClick={onGlobal} className="flex-shrink-0 bg-cyber-blue/10 hover:bg-cyber-blue/20 text-cyber-blue px-3 py-1.5 rounded flex items-center gap-2 text-xs font-bold border border-cyber-blue shadow-[0_0_10px_rgba(0,240,255,0.3)] transition">
+                                <i className="fa-solid fa-earth-americas"></i>
+                                <span className="hidden sm:inline">UNIVERSAL SECTOR</span>
+                            </button>
                         </div>
-                        
-                        {/* GLOBAL UPLINK BUTTON */}
-                        <button onClick={onGlobal} className="flex-shrink-0 bg-cyber-blue/10 hover:bg-cyber-blue/20 text-cyber-blue px-3 py-1.5 rounded flex items-center gap-2 text-xs font-bold border border-cyber-blue shadow-[0_0_10px_rgba(0,240,255,0.3)] transition">
-                            <i className="fa-solid fa-earth-americas"></i>
-                            <span className="hidden sm:inline">UNIVERSAL SECTOR</span>
-                        </button>
-                    </div>
+                    )}
+                    {isEmbedded && <div className="p-2 border-b border-slate-800 text-xs font-mono text-center text-gray-500">CHANNEL TEXT FREQUENCY</div>}
 
                     {/* Messages */}
                     {channel ? (
@@ -433,11 +539,10 @@
                                 const isMe = msg.uid === user.uid;
                                 return (
                                     <div key={i} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : ''} group anim-fade`}>
-                                        <img onClick={() => onViewProfile({uid: msg.uid, displayName: msg.displayName, photoURL: msg.photoURL})} src={msg.photoURL || generateAvatar(msg.displayName)} className="w-8 h-8 rounded border border-slate-700 object-cover cursor-pointer" />
+                                        {!isEmbedded && <img onClick={() => onViewProfile && onViewProfile({uid: msg.uid, displayName: msg.displayName, photoURL: msg.photoURL})} src={msg.photoURL || generateAvatar(msg.displayName)} className="w-8 h-8 rounded border border-slate-700 object-cover cursor-pointer" />}
                                         <div className={`flex flex-col max-w-[85%] ${isMe ? 'items-end' : ''}`}>
                                             <div className="flex items-baseline gap-2 mb-1">
                                                 <span className={`text-xs font-bold ${isMe ? 'text-cyber-blue' : 'text-gray-400'}`}>{msg.displayName}</span>
-                                                <span className="text-[9px] text-gray-600 font-mono">{new Date(msg.timestamp * 1000).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
                                             </div>
                                             <div className={`px-3 py-2 text-sm rounded ${isMe ? 'bg-cyber-blue/10 border border-cyber-blue/30 text-gray-200' : 'bg-[#0f172a] border border-slate-700 text-gray-300'}`}>
                                                 <RichText text={msg.text} />
@@ -512,16 +617,12 @@
             };
 
             const switchToGlobal = () => {
-                // FAILSAFE LOGIC: If 'global' is missing from state, fake it to prevent crashes
                 let global = sectors.find(s=>s.id==='global');
                 if (!global) {
                     global = { id: 'global', name: 'Universal Sector', channels: [{id: 'general', name: 'general', type: 'text'}] };
                 }
-                
                 setActiveSectorId('global');
                 setActiveChannel(global.channels[0]);
-                
-                // Force Close Nav
                 setIsMapOpen(false);
                 setSystemsOpen(false);
             };
@@ -535,6 +636,21 @@
                     </div>
                 </div>
             );
+
+            // Conditional Rendering for Voice vs Chat
+            const renderMainStage = () => {
+                if (activeChannel?.type === 'voice') {
+                    return <VoiceStage channel={activeChannel} user={user} onDisconnect={() => setActiveChannel(null)} activeSectorName={activeSectorData?.name} />;
+                }
+                return (
+                    <ChatTerminal 
+                        channel={activeChannel} user={user} onViewProfile={setTargetProfile}
+                        toggleMap={() => setIsMapOpen(true)} toggleSystems={() => setSystemsOpen(true)}
+                        activeSectorName={activeSectorId === 'dms' ? 'DIRECT LINK' : (activeSectorData?.name || 'UNKNOWN')}
+                        onGlobal={switchToGlobal}
+                    />
+                );
+            };
 
             return (
                 <div className="flex h-full w-full overflow-hidden bg-[#050a14]">
@@ -563,13 +679,8 @@
                         mobileOpen={systemsOpen} closeMobile={() => setSystemsOpen(false)}
                     />
 
-                    {/* Center Chat */}
-                    <ChatTerminal 
-                        channel={activeChannel} user={user} onViewProfile={setTargetProfile}
-                        toggleMap={() => setIsMapOpen(true)} toggleSystems={() => setSystemsOpen(true)}
-                        activeSectorName={activeSectorId === 'dms' ? 'DIRECT LINK' : (activeSectorData?.name || 'UNKNOWN')}
-                        onGlobal={switchToGlobal}
-                    />
+                    {/* Center Stage */}
+                    {renderMainStage()}
 
                     {/* Profile Modal */}
                     {targetProfile && (
