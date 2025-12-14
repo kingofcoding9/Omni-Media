@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Omni-OS v3.2</title>
+    <title>Omni-OS v4.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
@@ -18,28 +18,13 @@
 
     <style>
         :root { --neon-blue: #3b82f6; --bg-dark: #050505; --glass: rgba(15, 23, 42, 0.95); }
-        
-        /* STRICT VIEWPORT LOCK */
-        html, body {
-            height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden;
-            background-color: var(--bg-dark); color: #e0e0e0; font-family: 'Exo 2', sans-serif;
-            position: fixed; inset: 0;
-        }
-        
+        html, body { height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden; background-color: var(--bg-dark); color: #e0e0e0; font-family: 'Exo 2', sans-serif; position: fixed; inset: 0; }
         #root { height: 100%; width: 100%; display: flex; overflow: hidden; }
-
-        body::before {
-            content: ""; position: absolute; inset: 0; z-index: -1;
-            background-image: url("https://www.transparenttextures.com/patterns/dark-matter.png"), radial-gradient(circle at 50% 50%, #111827 0%, #000000 100%);
-            opacity: 0.8;
-        }
-
-        /* SCROLLBARS */
+        body::before { content: ""; position: absolute; inset: 0; z-index: -1; background-image: url("https://www.transparenttextures.com/patterns/dark-matter.png"), radial-gradient(circle at 50% 50%, #111827 0%, #000000 100%); opacity: 0.8; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
         .scroll-hide::-webkit-scrollbar { display: none; }
-
         .glass-panel { background: var(--glass); backdrop-filter: blur(10px); border-right: 1px solid rgba(255, 255, 255, 0.05); }
         .anim-fade { animation: fadeIn 0.2s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
@@ -49,7 +34,6 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        // --- CONFIG ---
         const firebaseConfig = {
             apiKey: "AIzaSyA6uWFyvcdPSSaM_TWz_aIytDXiw4JkO68",
             authDomain: "omni-science-hub.firebaseapp.com",
@@ -58,13 +42,220 @@
             messagingSenderId: "540333608940",
             appId: "1:540333608940:web:d42c58081d74bf7af17ac9"
         };
-
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
         const { useState, useEffect, useRef } = React;
 
-        // --- COMPONENTS ---
+        // --- UTILS ---
+        const compressImage = (file, maxWidth = 400) => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const scale = maxWidth / img.width;
+                        canvas.width = maxWidth;
+                        canvas.height = img.height * scale;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.7));
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        };
+
+        // --- MODALS & VIEWS ---
+
+        function UserProfileModal({ targetUser, currentUser, onClose }) {
+            const [isEditing, setIsEditing] = useState(false);
+            const [bio, setBio] = useState("");
+            const [displayName, setDisplayName] = useState(targetUser.displayName);
+            const [loading, setLoading] = useState(false);
+            const fileInputRef = useRef();
+
+            // Fetch latest user data (bio, etc)
+            useEffect(() => {
+                db.collection('users').doc(targetUser.uid).get().then(doc => {
+                    if(doc.exists) {
+                        setBio(doc.data().bio || "No tactical data available.");
+                    }
+                });
+            }, [targetUser]);
+
+            const handleSave = async () => {
+                setLoading(true);
+                await db.collection('users').doc(currentUser.uid).set({
+                    bio, displayName, lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+                
+                // Update Auth Profile too if name changed
+                if(displayName !== currentUser.displayName) {
+                    await currentUser.updateProfile({ displayName });
+                }
+                setIsEditing(false);
+                setLoading(false);
+                window.location.reload(); // Simple refresh to propogate changes
+            };
+
+            const handlePhotoUpload = async (e) => {
+                const file = e.target.files[0];
+                if(!file) return;
+                setLoading(true);
+                const base64 = await compressImage(file, 200);
+                await currentUser.updateProfile({ photoURL: base64 });
+                await db.collection('users').doc(currentUser.uid).set({ photoURL: base64 }, { merge: true });
+                setLoading(false);
+                window.location.reload();
+            };
+
+            const isMe = currentUser.uid === targetUser.uid;
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="bg-[#0f172a] border border-slate-700 p-6 rounded-2xl w-full max-w-sm shadow-2xl relative overflow-hidden">
+                        <button onClick={onClose} className="absolute top-4 right-4 text-slate-500 hover:text-white"><i className="fa-solid fa-xmark text-xl"></i></button>
+                        
+                        <div className="flex flex-col items-center">
+                            <div className="relative group">
+                                <img src={targetUser.photoURL || `https://ui-avatars.com/api/?name=${targetUser.displayName}`} className="w-24 h-24 rounded-full border-4 border-slate-800 object-cover" />
+                                {isMe && (
+                                    <div onClick={() => fileInputRef.current.click()} className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition">
+                                        <i className="fa-solid fa-camera text-white"></i>
+                                    </div>
+                                )}
+                                <input type="file" ref={fileInputRef} className="hidden" onChange={handlePhotoUpload} accept="image/*" />
+                            </div>
+                            
+                            {isEditing ? (
+                                <input value={displayName} onChange={e=>setDisplayName(e.target.value)} className="mt-4 bg-slate-800 text-white text-center font-bold rounded p-1" />
+                            ) : (
+                                <h2 className="text-xl font-bold text-white mt-4">{targetUser.displayName}</h2>
+                            )}
+                            
+                            <p className="text-xs text-blue-500 uppercase tracking-widest mt-1">Omni-Operative</p>
+
+                            <div className="mt-6 w-full bg-slate-900/50 p-4 rounded-lg border border-slate-800">
+                                <p className="text-[10px] text-slate-500 uppercase mb-2">Tactical Bio</p>
+                                {isEditing ? (
+                                    <textarea value={bio} onChange={e=>setBio(e.target.value)} className="w-full bg-slate-800 text-white text-sm p-2 rounded h-24" />
+                                ) : (
+                                    <p className="text-sm text-slate-300 italic">"{bio}"</p>
+                                )}
+                            </div>
+
+                            {isMe && (
+                                <div className="mt-6 w-full">
+                                    {isEditing ? (
+                                        <button onClick={handleSave} disabled={loading} className="w-full bg-green-600 hover:bg-green-500 text-white py-2 rounded font-bold uppercase text-xs">{loading ? 'Syncing...' : 'Save Profile'}</button>
+                                    ) : (
+                                        <button onClick={() => setIsEditing(true)} className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2 rounded font-bold uppercase text-xs">Edit Identity</button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function DMDirectory({ user, onSelectDM, onBack }) {
+            const [search, setSearch] = useState("");
+            const [results, setResults] = useState([]);
+            const [friends, setFriends] = useState([]);
+            const [requests, setRequests] = useState([]);
+            const [activeTab, setActiveTab] = useState('friends'); // friends, search
+
+            useEffect(() => {
+                // Load Friends/DMs (Mock: scanning existing DMs collection)
+                // In a real app, you'd store a friends array on the user doc
+                const unsub = db.collection('dms').where('participants', 'array-contains', user.uid).onSnapshot(snap => {
+                    const dms = snap.docs.map(d => {
+                        const data = d.data();
+                        const otherId = data.participants.find(p => p !== user.uid);
+                        // We need the other user's name/photo. For now, we rely on the DM doc metadata if stored, or fetch it.
+                        // Simplification: We stored 'names' map in the DM doc when creating it.
+                        return { id: d.id, ...data, otherId };
+                    });
+                    setFriends(dms);
+                });
+                return unsub;
+            }, [user]);
+
+            const handleSearch = async (e) => {
+                e.preventDefault();
+                if(!search.trim()) return;
+                // Simple search by exact email or display name prefix
+                const snap = await db.collection('users').where('displayName', '>=', search).where('displayName', '<=', search + '\uf8ff').limit(5).get();
+                setResults(snap.docs.map(d => ({uid: d.id, ...d.data()})));
+                setActiveTab('search');
+            };
+
+            const startDM = async (targetUser) => {
+                // Check if DM exists
+                const existing = friends.find(f => f.participants.includes(targetUser.uid));
+                if(existing) {
+                    onSelectDM(existing);
+                } else {
+                    // Create new DM
+                    const docRef = await db.collection('dms').add({
+                        participants: [user.uid, targetUser.uid],
+                        names: { [user.uid]: user.displayName, [targetUser.uid]: targetUser.displayName }, // Cache names
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    onSelectDM({ id: docRef.id, otherId: targetUser.uid, names: { [targetUser.uid]: targetUser.displayName } });
+                }
+            };
+
+            return (
+                <div className="flex-1 bg-black/40 flex flex-col h-full relative z-50">
+                    <header className="h-16 border-b border-slate-800 flex items-center px-4 glass-panel justify-between">
+                        <h2 className="text-lg font-bold text-white tracking-widest">DIRECT UPLINKS</h2>
+                        <div className="flex gap-2">
+                             <button onClick={() => setActiveTab('friends')} className={`px-3 py-1 rounded text-xs uppercase font-bold ${activeTab==='friends' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>Allies</button>
+                             <button onClick={() => setActiveTab('search')} className={`px-3 py-1 rounded text-xs uppercase font-bold ${activeTab==='search' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>Global Scan</button>
+                        </div>
+                    </header>
+
+                    <div className="p-4 border-b border-slate-800">
+                        <form onSubmit={handleSearch} className="relative">
+                            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search Operative Name..." className="w-full bg-slate-900 border border-slate-700 rounded-lg py-2 pl-10 text-white focus:border-blue-500 outline-none" />
+                            <i className="fa-solid fa-search absolute left-3 top-3 text-slate-500"></i>
+                        </form>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                        {activeTab === 'friends' && friends.map(dm => {
+                             const name = dm.names ? dm.names[dm.otherId] : "Unknown Operative";
+                             return (
+                                <div key={dm.id} onClick={() => onSelectDM(dm)} className="p-3 bg-slate-800/50 rounded-lg flex items-center gap-3 cursor-pointer hover:bg-slate-700 border border-transparent hover:border-blue-500/30 transition">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center font-bold text-white">{name[0]}</div>
+                                    <div>
+                                        <p className="font-bold text-white">{name}</p>
+                                        <p className="text-[10px] text-slate-400">Secure Line Active</p>
+                                    </div>
+                                </div>
+                             )
+                        })}
+
+                        {activeTab === 'search' && results.map(u => (
+                            <div key={u.uid} className="p-3 bg-slate-800/50 rounded-lg flex items-center justify-between border border-dashed border-slate-700">
+                                <div className="flex items-center gap-3">
+                                    <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-10 h-10 rounded-full bg-slate-900" />
+                                    <p className="font-bold text-white">{u.displayName}</p>
+                                </div>
+                                <button onClick={() => startDM(u)} className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs font-bold uppercase rounded transition">Connect</button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // --- MAIN COMPONENTS ---
 
         function NavRail({ sectors, onSelect, activeId, onCreateSector }) {
             return (
@@ -92,44 +283,42 @@
             );
         }
 
-        function ContextSidebar({ activeSector, user, onChannelSelect, activeChannel, onCreateChannel }) {
+        function ContextSidebar({ activeSector, user, onChannelSelect, activeChannel, onCreateChannel, onDeleteChannel }) {
             if (!activeSector) return null;
-            const title = activeSector === 'global' ? "GLOBAL FEED" : (activeSector === 'dms' ? "DIRECT UPLINKS" : activeSector.name);
-            const subtitle = activeSector === 'global' ? "Public Relay" : (activeSector === 'dms' ? "Encrypted Channels" : "Secure Sector");
+            if (activeSector === 'dms') return null; // DM Directory takes over full screen or main stage
+
+            const title = activeSector === 'global' ? "GLOBAL FEED" : activeSector.name;
+            const isOwner = activeSector.ownerId === user.uid;
 
             return (
                 <div className="w-60 h-full bg-[#0a0f16] flex flex-col border-r border-slate-800/50 z-20 flex-shrink-0 hidden md:flex"> 
-                    {/* Note: Hidden on mobile by default to save space, usually you'd want a drawer toggler */}
                     <div className="p-4 border-b border-slate-800/50 h-16 flex flex-col justify-center flex-shrink-0">
                         <h2 className="font-bold text-white truncate text-sm tracking-wider">{title}</h2>
-                        <p className="text-[10px] text-slate-500 uppercase">{subtitle}</p>
+                        <p className="text-[10px] text-slate-500 uppercase">{activeSector === 'global' ? 'Public Relay' : 'Secure Sector'}</p>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-6 min-h-0">
-                        {(activeSector === 'global' || activeSector === 'dms') ? (
-                            <div className="text-center mt-10 opacity-30">
-                                <i className={`fa-solid ${activeSector === 'global' ? 'fa-globe' : 'fa-comments'} text-4xl mb-2`}></i>
-                                <p className="text-xs">System Active</p>
-                            </div>
+                        {activeSector === 'global' ? (
+                            <div className="text-center mt-10 opacity-30"><i className="fa-solid fa-globe text-4xl mb-2"></i><p className="text-xs">System Active</p></div>
                         ) : (
                             ['text', 'voice', 'forum'].map(type => {
                                 const channels = activeSector.channels?.filter(c => c.type === type) || [];
                                 const icon = type === 'text' ? 'fa-hashtag' : (type === 'voice' ? 'fa-microphone-lines' : 'fa-layer-group');
-                                const label = type === 'text' ? 'COMM CHANNELS' : (type === 'voice' ? 'AUDIO LINKS' : 'DATA DROPS');
                                 return (
                                     <div key={type}>
                                         <div className="flex items-center justify-between px-2 mb-1 group">
-                                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest group-hover:text-slate-300 transition">{label}</span>
-                                            <button onClick={() => onCreateChannel(type)} className="text-slate-600 hover:text-white opacity-0 group-hover:opacity-100 transition"><i className="fa-solid fa-plus text-[10px]"></i></button>
+                                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{type}</span>
+                                            {isOwner && <button onClick={() => onCreateChannel(type)} className="text-slate-600 hover:text-white opacity-0 group-hover:opacity-100"><i className="fa-solid fa-plus text-[10px]"></i></button>}
                                         </div>
                                         <div className="space-y-0.5">
                                             {channels.map(ch => (
-                                                <div key={ch.id} onClick={() => onChannelSelect(ch)} 
-                                                    className={`px-2 py-1.5 rounded cursor-pointer flex items-center gap-2 text-sm transition ${activeChannel?.id === ch.id ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-300'}`}>
-                                                    <i className={`fa-solid ${icon} text-xs opacity-50 w-4 text-center`}></i>
-                                                    <span className="truncate">{ch.name}</span>
+                                                <div key={ch.id} className={`group flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition ${activeChannel?.id === ch.id ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800/50'}`}>
+                                                    <div className="flex items-center gap-2 overflow-hidden" onClick={() => onChannelSelect(ch)}>
+                                                        <i className={`fa-solid ${icon} text-xs opacity-50 w-4`}></i>
+                                                        <span className="truncate text-sm">{ch.name}</span>
+                                                    </div>
+                                                    {isOwner && <button onClick={(e) => { e.stopPropagation(); onDeleteChannel(ch); }} className="text-red-500 opacity-0 group-hover:opacity-100 text-[10px]"><i className="fa-solid fa-trash"></i></button>}
                                                 </div>
                                             ))}
-                                            {channels.length === 0 && <div className="px-2 text-[10px] text-slate-800 italic">No wavelengths active</div>}
                                         </div>
                                     </div>
                                 );
@@ -140,8 +329,7 @@
             );
         }
 
-        function MainStage({ channel, user, db }) {
-            const [posts, setPosts] = useState([]);
+        function MainStage({ channel, user, db, onViewProfile }) {
             const [messages, setMessages] = useState([]);
             const [text, setText] = useState("");
             const bottomRef = useRef();
@@ -150,17 +338,14 @@
                 if (!channel) return;
                 let ref;
                 if (channel.type === 'global') ref = db.collection('messages');
-                else if (channel.sectorId) {
-                    if(channel.type === 'forum') ref = db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('posts');
-                    else ref = db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('messages');
-                }
+                else if (channel.type === 'dm') ref = db.collection('dms').doc(channel.id).collection('messages'); // Fixed DM Ref
+                else if (channel.sectorId) ref = db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('messages');
+                
                 if(!ref) return;
 
                 const unsub = ref.orderBy('timestamp', 'asc').limitToLast(50).onSnapshot(snap => {
-                    const data = snap.docs.map(d => ({id: d.id, ...d.data()}));
-                    if (channel.type === 'forum') setPosts(data);
-                    else setMessages(data);
-                    if(channel.type !== 'forum') setTimeout(() => bottomRef.current?.scrollIntoView({behavior: 'smooth'}), 100);
+                    setMessages(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                    setTimeout(() => bottomRef.current?.scrollIntoView({behavior: 'smooth'}), 100);
                 });
                 return unsub;
             }, [channel]);
@@ -172,99 +357,55 @@
                     text, uid: user.uid, displayName: user.displayName, photoURL: user.photoURL,
                     timestamp: firebase.firestore.FieldValue.serverTimestamp(), platform: "Web"
                 };
+                
                 if (channel.type === 'global') await db.collection('messages').add(payload);
-                else if (channel.sectorId) {
-                     if (channel.type === 'forum') {
-                         await db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('posts').add({
-                             ...payload, title: text.split('\n')[0].substring(0, 50), body: text
-                         });
-                     } else {
-                         await db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('messages').add(payload);
-                     }
-                }
+                else if (channel.type === 'dm') await db.collection('dms').doc(channel.id).collection('messages').add(payload);
+                else if (channel.sectorId) await db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('messages').add(payload);
                 setText("");
             };
 
-            // RENDER: DEFAULT CHAT
-            if (channel?.type !== 'forum' && channel?.type !== 'voice') {
-                return (
-                    <div className="flex-1 bg-black/20 flex flex-col relative h-full min-w-0">
-                        {/* Header */}
-                        <header className="h-16 border-b border-slate-800/50 flex-shrink-0 flex items-center px-4 glass-panel z-10 justify-between">
-                            <div className="flex items-center min-w-0">
-                                <i className={`fa-solid ${channel?.type==='global' ? 'fa-globe text-blue-500' : 'fa-hashtag text-slate-400'} mr-3`}></i>
-                                <div className="min-w-0">
-                                    <h1 className="font-bold text-white uppercase tracking-wider text-sm truncate">{channel?.name || "Global Feed"}</h1>
-                                    <p className="text-[10px] text-slate-500 truncate">{channel?.type==='global' ? "Public Relay" : "Secure Text Line"}</p>
-                                </div>
-                            </div>
-                        </header>
+            if (!channel) return <div className="flex-1 bg-black/50"></div>;
 
-                        {/* Messages Area */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
-                            {messages.map(msg => {
-                                const isMe = msg.uid === user.uid;
-                                // Correct Image Logic: Check photoURL for avatar, imageURL for attachment
-                                return (
-                                    <div key={msg.id} className={`flex gap-3 anim-fade ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                        
-                                        {/* Avatar Left (Others) */}
-                                        {!isMe && (
-                                            <div className="flex-shrink-0 mt-1 relative">
-                                                {msg.photoURL ? 
-                                                    <img src={msg.photoURL} className="w-9 h-9 rounded-lg border border-slate-700 object-cover bg-black" /> : 
-                                                    <div className="w-9 h-9 bg-slate-800 rounded-lg border border-slate-700 flex items-center justify-center font-bold text-slate-500 text-xs">{msg.displayName?.[0]}</div>
-                                                }
-                                                {msg.platform === 'Discord' && <div className="absolute -bottom-1 -right-1 bg-[#5865F2] text-white text-[8px] px-1 rounded border border-black"><i className="fa-brands fa-discord"></i></div>}
-                                            </div>
-                                        )}
+            return (
+                <div className="flex-1 bg-black/20 flex flex-col relative h-full min-w-0">
+                    <header className="h-16 border-b border-slate-800/50 flex-shrink-0 flex items-center px-4 glass-panel z-10">
+                        <i className="fa-solid fa-satellite-dish text-blue-500 mr-3"></i>
+                        <h1 className="font-bold text-white uppercase tracking-wider text-sm truncate">{channel.name}</h1>
+                    </header>
 
-                                        <div className={`max-w-[80%] md:max-w-[70%] flex flex-col ${isMe ? 'items-end' : 'items-start'} min-w-0`}>
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className={`text-xs font-bold truncate ${isMe ? 'text-blue-400' : 'text-slate-400'}`}>{msg.displayName}</span>
-                                                <span className="text-[9px] text-slate-600 flex-shrink-0">{msg.timestamp?.toDate().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                                            </div>
-                                            
-                                            <div className={`px-4 py-2 rounded-lg text-sm leading-relaxed break-words w-full shadow-lg ${isMe ? 'bg-blue-600/20 text-blue-50 border border-blue-500/30' : 'bg-slate-800/60 text-slate-300 border border-slate-700/50'}`}>
-                                                {msg.text && <p className="whitespace-pre-wrap">{msg.text}</p>}
-                                                {/* RESTORED IMAGE RENDERING */}
-                                                {(msg.imageURL || msg.imageBase64) && (
-                                                    <div className="mt-2 rounded overflow-hidden border border-white/10">
-                                                        <img src={msg.imageURL || msg.imageBase64} className="max-w-full h-auto block" loading="lazy" />
-                                                    </div>
-                                                )}
-                                            </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+                        {messages.map(msg => {
+                            const isMe = msg.uid === user.uid;
+                            return (
+                                <div key={msg.id} className={`flex gap-3 anim-fade ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                    {!isMe && (
+                                        <img onClick={() => onViewProfile({ uid: msg.uid, displayName: msg.displayName, photoURL: msg.photoURL })} 
+                                             src={msg.photoURL || `https://ui-avatars.com/api/?name=${msg.displayName}`} 
+                                             className="w-9 h-9 rounded-lg border border-slate-700 object-cover cursor-pointer hover:border-blue-500 transition" 
+                                        />
+                                    )}
+                                    <div className={`max-w-[80%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                                        <span className="text-xs font-bold text-slate-500 mb-1">{msg.displayName}</span>
+                                        <div className={`px-4 py-2 rounded-lg text-sm break-words shadow-lg ${isMe ? 'bg-blue-600/20 text-blue-50 border border-blue-500/30' : 'bg-slate-800/60 text-slate-300 border border-slate-700/50'}`}>
+                                            {msg.text}
+                                            {msg.imageURL && <img src={msg.imageURL} className="mt-2 rounded max-w-full" />}
                                         </div>
-
-                                        {/* Avatar Right (Me) */}
-                                        {isMe && (
-                                            <div className="flex-shrink-0 mt-1">
-                                                {msg.photoURL ? 
-                                                    <img src={msg.photoURL} className="w-9 h-9 rounded-lg border border-blue-500/30 object-cover bg-black" /> : 
-                                                    <div className="w-9 h-9 bg-blue-900 rounded-lg border border-blue-500/30 flex items-center justify-center font-bold text-blue-200 text-xs">{msg.displayName?.[0]}</div>
-                                                }
-                                            </div>
-                                        )}
                                     </div>
-                                );
-                            })}
-                            <div ref={bottomRef}></div>
-                        </div>
-
-                        {/* Input Area */}
-                        <div className="p-4 bg-black/40 border-t border-slate-800/50 flex-shrink-0">
-                            <form onSubmit={sendMessage} className="relative max-w-full">
-                                <input value={text} onChange={e=>setText(e.target.value)} placeholder={`Transmission...`} 
-                                    className="w-full bg-slate-900/50 border border-slate-700 rounded-lg pl-4 pr-12 py-3 text-white focus:border-blue-500 outline-none transition font-light placeholder-slate-600 text-sm" />
-                                <button type="submit" className="absolute right-2 top-2 p-1.5 text-slate-400 hover:text-blue-400 transition"><i className="fa-solid fa-paper-plane"></i></button>
-                            </form>
-                        </div>
+                                    {isMe && <img src={msg.photoURL || `https://ui-avatars.com/api/?name=${msg.displayName}`} onClick={() => onViewProfile(user)} className="w-9 h-9 rounded-lg border border-blue-500/30 object-cover cursor-pointer" />}
+                                </div>
+                            );
+                        })}
+                        <div ref={bottomRef}></div>
                     </div>
-                );
-            }
 
-            // Fallback for Forum/Voice (Simplified for brevity as chat was the main issue)
-            return <div className="flex-1 bg-black text-white p-10 flex items-center justify-center">Channel Mode Active: {channel?.type}</div>;
+                    <div className="p-4 bg-black/40 border-t border-slate-800/50 flex-shrink-0">
+                        <form onSubmit={sendMessage} className="relative">
+                            <input value={text} onChange={e=>setText(e.target.value)} placeholder="Transmission..." className="w-full bg-slate-900/50 border border-slate-700 rounded-lg pl-4 pr-12 py-3 text-white focus:border-blue-500 outline-none transition text-sm" />
+                            <button type="submit" className="absolute right-2 top-2 p-1.5 text-slate-400 hover:text-blue-400"><i className="fa-solid fa-paper-plane"></i></button>
+                        </form>
+                    </div>
+                </div>
+            );
         }
 
         function App() {
@@ -272,53 +413,83 @@
             const [sectors, setSectors] = useState([]);
             const [activeSectorId, setActiveSectorId] = useState('global');
             const [activeChannel, setActiveChannel] = useState({ id: 'global', type: 'global', name: 'Global Feed' });
+            const [targetProfile, setTargetProfile] = useState(null); // For Modal
 
-            useEffect(() => auth.onAuthStateChanged(setUser), []);
+            // Init & User Sync
+            useEffect(() => auth.onAuthStateChanged(async u => { 
+                setUser(u);
+                if(u) {
+                    // Sync User to DB for Search
+                    await db.collection('users').doc(u.uid).set({
+                        uid: u.uid, displayName: u.displayName, email: u.email, photoURL: u.photoURL,
+                        lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                }
+            }), []);
 
+            // Sector Sync
             useEffect(() => {
                 if(!user) return;
                 const unsub = db.collection('sectors').onSnapshot(snap => {
-                    setSectors(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                    const data = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                    setSectors(data);
                 });
                 return unsub;
             }, [user]);
 
+            // Handle Navigation
             useEffect(() => {
                 if(activeSectorId === 'global') setActiveChannel({ id: 'global', type: 'global', name: 'Global Feed' });
-                else if (activeSectorId === 'dms') setActiveChannel({ id: 'dm-home', type: 'dm', name: 'Direct Messages' });
+                else if(activeSectorId === 'dms') setActiveChannel(null); // DM Directory handles selection
                 else {
                     const sector = sectors.find(s => s.id === activeSectorId);
-                    if(sector && sector.channels && sector.channels.length) setActiveChannel({ ...sector.channels[0], sectorId: sector.id });
+                    if(sector && sector.channels?.length) setActiveChannel({ ...sector.channels[0], sectorId: sector.id });
                     else setActiveChannel(null);
                 }
             }, [activeSectorId, sectors]);
 
             const handleCreateSector = () => {
                 const name = prompt("Designate Sector Name:");
-                if(name) db.collection('sectors').add({ name, ownerId: user.uid, channels: [{ id: Date.now().toString(), name: 'general', type: 'text' }] });
-            };
-
-            const handleCreateChannel = (type) => {
-                const name = prompt(`Designate ${type} Wavelength Name:`);
                 if(name) {
-                    const sector = sectors.find(s => s.id === activeSectorId);
-                    const newCh = { id: Date.now().toString(), name: name.toLowerCase().replace(/\s/g, '-'), type };
-                    db.collection('sectors').doc(activeSectorId).update({ channels: [...(sector.channels || []), newCh] });
+                    db.collection('sectors').add({ name, ownerId: user.uid, channels: [{ id: Date.now().toString(), name: 'general', type: 'text' }] })
+                      .then(doc => setActiveSectorId(doc.id)); // Auto-navigate
                 }
             };
 
-            if (!user) return <div className="h-full flex items-center justify-center bg-black"><button onClick={() => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())} className="glass-panel px-10 py-5 rounded-2xl text-white font-bold uppercase tracking-[0.2em] border border-blue-500/30 hover:bg-blue-600/20 hover:scale-105 transition"><i className="fa-brands fa-google mr-3"></i> Initialize Uplink</button></div>;
+            const handleCreateChannel = (type) => {
+                const name = prompt(`Designate ${type} Name:`);
+                if(name) {
+                    const sector = sectors.find(s => s.id === activeSectorId);
+                    const newCh = { id: Date.now().toString(), name: name.replace(/\s/g, '-').toLowerCase(), type };
+                    db.collection('sectors').doc(activeSectorId).update({ channels: [...(sector.channels||[]), newCh] });
+                }
+            };
+
+            const handleDeleteChannel = (ch) => {
+                if(!confirm(`Delete channel ${ch.name}?`)) return;
+                const sector = sectors.find(s => s.id === activeSectorId);
+                const updated = sector.channels.filter(c => c.id !== ch.id);
+                db.collection('sectors').doc(activeSectorId).update({ channels: updated });
+            };
+
+            if (!user) return <div className="h-full flex items-center justify-center bg-black"><button onClick={() => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())} className="glass-panel px-10 py-5 rounded-2xl text-white font-bold uppercase tracking-[0.2em] border border-blue-500/30 hover:bg-blue-600/20"><i className="fa-brands fa-google mr-3"></i> Initialize Uplink</button></div>;
 
             const activeSectorData = sectors.find(s => s.id === activeSectorId);
 
             return (
                 <div className="flex h-full w-full overflow-hidden">
                     <NavRail sectors={sectors} activeId={activeSectorId} onSelect={setActiveSectorId} onCreateSector={handleCreateSector} />
-                    {/* On Mobile, you might hide ContextSidebar entirely or make it a drawer. For now, hidden on small screens */}
-                    <div className="hidden md:block h-full">
-                        <ContextSidebar activeSector={activeSectorId === 'global' ? 'global' : (activeSectorId === 'dms' ? 'dms' : activeSectorData)} user={user} onChannelSelect={(ch) => setActiveChannel({...ch, sectorId: activeSectorId})} activeChannel={activeChannel} onCreateChannel={handleCreateChannel} />
-                    </div>
-                    <MainStage channel={activeChannel} user={user} db={db} />
+                    
+                    {activeSectorId === 'dms' ? (
+                        <DMDirectory user={user} onSelectDM={(dm) => setActiveChannel({ id: dm.id, type: 'dm', name: dm.names?.[dm.otherId] || "Secure Chat" })} />
+                    ) : (
+                        <ContextSidebar activeSector={activeSectorId === 'global' ? 'global' : activeSectorData} user={user} onChannelSelect={(ch) => setActiveChannel({...ch, sectorId: activeSectorId})} activeChannel={activeChannel} onCreateChannel={handleCreateChannel} onDeleteChannel={handleDeleteChannel} />
+                    )}
+
+                    {activeSectorId !== 'dms' && <MainStage channel={activeChannel} user={user} db={db} onViewProfile={setTargetProfile} />}
+                    {activeSectorId === 'dms' && activeChannel && <MainStage channel={activeChannel} user={user} db={db} onViewProfile={setTargetProfile} />}
+
+                    {targetProfile && <UserProfileModal targetUser={targetProfile} currentUser={user} onClose={() => setTargetProfile(null)} />}
                 </div>
             );
         }
