@@ -3,45 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Omni-Media</title>
+    <title>Omni-Media Hub</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Exo 2 Font for Sci-Fi feel -->
+    <!-- Fonts & Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Firebase SDKs (Removed Storage, only Auth/Firestore needed) -->
+    <!-- Firebase SDKs -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
     <style>
         body { 
-            background-color: #000000; 
+            background-color: #050505; 
             color: #e0e0e0; 
             font-family: 'Exo 2', sans-serif;
             background-image: 
-                radial-gradient(circle at 15% 50%, rgba(20, 30, 255, 0.15) 0%, transparent 25%), 
-                radial-gradient(circle at 85% 30%, rgba(255, 20, 20, 0.1) 0%, transparent 25%);
+                linear-gradient(rgba(0, 0, 0, 0.7), rgba(0, 0, 0, 0.7)),
+                url("https://www.transparenttextures.com/patterns/cubes.png"),
+                radial-gradient(circle at 15% 50%, rgba(20, 30, 255, 0.15) 0%, transparent 40%), 
+                radial-gradient(circle at 85% 30%, rgba(255, 20, 20, 0.1) 0%, transparent 40%);
             height: 100vh;
             overflow: hidden;
         }
         .glass-panel {
-            background: rgba(10, 10, 12, 0.7);
-            backdrop-filter: blur(12px);
+            background: rgba(15, 15, 20, 0.85);
+            backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.08);
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.5);
         }
-        .message-anim { animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        .message-anim { animation: slideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
         @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         
-        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .typing-dot { animation: typing 1.4s infinite ease-in-out both; }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
     </style>
 </head>
 <body>
@@ -58,140 +64,63 @@
             appId: "1:540333608940:web:d42c58081d74bf7af17ac9"
         };
 
-        try { if (!firebase.apps.length) firebase.initializeApp(firebaseConfig); } catch (e) {}
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const db = firebase.firestore();
         const { useState, useEffect, useRef } = React;
 
+        // --- UTILS ---
         const formatTime = (timestamp) => {
             if (!timestamp) return "";
             const date = timestamp.toDate();
-            const now = new Date();
-            const isToday = date.toDateString() === now.toDateString();
-            const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-            return isToday ? timeStr : `${date.toLocaleDateString()} ${timeStr}`;
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         };
 
-        // --- IMAGE COMPRESSION UTILS ---
-        const compressImage = (file) => {
+        const compressImage = (file, maxWidth = 600, quality = 0.7) => {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
-                reader.onload = (event) => {
+                reader.onload = (e) => {
                     const img = new Image();
-                    img.src = event.target.result;
+                    img.src = e.target.result;
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
-                        const MAX_WIDTH = 150; // Small size for database efficiency
-                        const scaleSize = MAX_WIDTH / img.width;
-                        canvas.width = MAX_WIDTH;
+                        const scaleSize = maxWidth / img.width;
+                        canvas.width = maxWidth;
                         canvas.height = img.height * scaleSize;
-                        
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        // Convert to base64 string (JPEG 70% quality)
-                        resolve(canvas.toDataURL('image/jpeg', 0.7));
+                        resolve(canvas.toDataURL('image/jpeg', quality));
                     };
-                    img.onerror = (err) => reject(err);
+                    img.onerror = reject;
                 };
-                reader.onerror = (err) => reject(err);
+                reader.onerror = reject;
             });
         };
 
         // --- COMPONENTS ---
 
-        function SettingsModal({ user, onClose }) {
-            const [newName, setNewName] = useState(user.displayName || "");
-            const [uploading, setUploading] = useState(false);
-
-            const handleFileChange = async (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                
-                setUploading(true);
-                try {
-                    // Compress the image to a string
-                    const base64Image = await compressImage(file);
-                    
-                    // Save string directly to user profile
-                    await user.updateProfile({ photoURL: base64Image });
-                    window.location.reload(); 
-                } catch (err) {
-                    alert("Upload Failed: " + err.message);
-                    setUploading(false);
-                }
-            };
-
-            const handleSaveName = async (e) => {
-                e.preventDefault();
-                try {
-                    await user.updateProfile({ displayName: newName });
-                    window.location.reload();
-                } catch (err) { alert(err.message); }
-            };
-
-            return (
-                <div className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-black/80 backdrop-blur-sm">
-                    <div className="glass-panel p-8 rounded-2xl max-w-sm w-full relative overflow-hidden border border-slate-700">
-                        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-                            <i className="fa-solid fa-id-card text-blue-500"></i> Identity Config
-                        </h2>
-                        
-                        <div className="space-y-6 relative z-10">
-                            {/* Avatar Section */}
-                            <div className="flex flex-col items-center gap-3">
-                                <div className="relative group cursor-pointer w-24 h-24">
-                                    <div className="w-full h-full rounded-full border-2 border-blue-500/50 p-1 overflow-hidden">
-                                        {user.photoURL ? 
-                                            <img src={user.photoURL} className="w-full h-full rounded-full object-cover" /> : 
-                                            <div className="w-full h-full bg-slate-800 rounded-full flex items-center justify-center text-3xl font-bold text-slate-500">{user.displayName?.[0]}</div>
-                                        }
-                                    </div>
-                                    <label className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white text-xs font-bold uppercase tracking-widest">
-                                        {uploading ? <i className="fa-solid fa-spinner fa-spin"></i> : "Upload"}
-                                        <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} disabled={uploading} />
-                                    </label>
-                                </div>
-                                <p className="text-xs text-slate-400 uppercase tracking-widest">Select Image File</p>
-                            </div>
-
-                            {/* Name Section */}
-                            <form onSubmit={handleSaveName} className="space-y-4">
-                                <div>
-                                    <label className="text-xs text-blue-400 uppercase font-bold tracking-wider">Designation</label>
-                                    <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
-                                        className="w-full bg-black/50 border border-slate-700 text-white p-3 rounded-lg mt-1 outline-none focus:border-blue-500 transition" />
-                                </div>
-                                <div className="flex gap-3">
-                                    <button type="button" onClick={onClose} className="flex-1 bg-slate-800 hover:bg-slate-700 py-3 rounded-lg text-sm font-bold uppercase tracking-wider transition">Cancel</button>
-                                    <button type="submit" className="flex-1 bg-gradient-to-r from-blue-600 to-blue-800 hover:from-blue-500 hover:to-blue-700 py-3 rounded-lg text-sm font-bold uppercase tracking-wider transition shadow-lg shadow-blue-900/20">
-                                        Save Data
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
-
         function Login() {
             const handleGoogle = () => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider());
             return (
-                <div className="flex items-center justify-center min-h-screen relative">
-                    <div className="z-10 text-center space-y-10 p-8 glass-panel rounded-3xl border-0 shadow-2xl max-w-lg w-full">
-                        <div className="flex justify-center">
-                            <div className="w-24 h-24 bg-gradient-to-br from-blue-600 to-black rounded-2xl flex items-center justify-center shadow-2xl border border-blue-500/30">
-                                <i className="fa-solid fa-infinity text-white text-5xl"></i>
+                <div className="flex items-center justify-center min-h-screen relative p-4">
+                    <div className="glass-panel p-10 rounded-3xl border border-slate-700 shadow-2xl max-w-md w-full text-center space-y-8 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500"></div>
+                        
+                        <div className="relative">
+                            <div className="w-20 h-20 bg-blue-600/20 rounded-full mx-auto flex items-center justify-center border border-blue-400/30 shadow-[0_0_30px_rgba(37,99,235,0.3)]">
+                                <i className="fa-solid fa-satellite-dish text-blue-400 text-3xl"></i>
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <h1 className="text-5xl font-bold text-white tracking-tighter">OMNI<span className="text-blue-500">MEDIA</span></h1>
-                            <p className="text-slate-400 uppercase tracking-[0.2em] text-sm">Secure Communications Terminal</p>
+                        
+                        <div>
+                            <h1 className="text-4xl font-black text-white tracking-tight">OMNI<span className="text-blue-500">HUB</span></h1>
+                            <p className="text-slate-400 text-xs uppercase tracking-[0.3em] mt-2">Secure Uplink Terminal</p>
                         </div>
-                        <button onClick={handleGoogle} className="w-full py-4 bg-white text-black font-black uppercase tracking-widest rounded-xl hover:bg-blue-50 hover:scale-[1.02] transition shadow-xl flex items-center justify-center gap-4">
-                            <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-6 h-6"/>
-                            Initialize Session
+
+                        <button onClick={handleGoogle} className="w-full py-4 bg-white text-black font-bold uppercase tracking-widest rounded-xl hover:bg-blue-50 hover:scale-[1.02] transition shadow-xl flex items-center justify-center gap-3">
+                            <img src="https://www.svgrepo.com/show/475656/google-color.svg" className="w-5 h-5"/>
+                            Authenticate
                         </button>
                     </div>
                 </div>
@@ -201,101 +130,141 @@
         function ChatRoom({ user }) {
             const [messages, setMessages] = useState([]);
             const [text, setText] = useState("");
-            const [showSettings, setShowSettings] = useState(false);
+            const [sending, setSending] = useState(false);
             const bottomRef = useRef(null);
+            const fileInputRef = useRef(null);
 
             useEffect(() => {
                 const unsub = db.collection("messages").orderBy("timestamp", "asc").limitToLast(60).onSnapshot(snap => {
-                    setMessages(snap.docs.map(d => ({id: d.id, ...d.data()})));
+                    const msgs = snap.docs.map(d => ({id: d.id, ...d.data()}));
+                    setMessages(msgs);
                     setTimeout(() => bottomRef.current?.scrollIntoView({behavior: 'smooth'}), 100);
                 });
                 return unsub;
             }, []);
 
-            const send = async (e) => {
+            const sendMessage = async (e) => {
                 e.preventDefault();
                 if (!text.trim()) return;
+                setSending(true);
                 try {
                     await db.collection("messages").add({
-                        text, uid: user.uid, displayName: user.displayName || "Omni-User",
-                        photoURL: user.photoURL || "", timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        text, 
+                        uid: user.uid, 
+                        displayName: user.displayName || "Omni-User",
+                        photoURL: user.photoURL || "", 
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
                         platform: "Web"
                     });
                     setText("");
                 } catch(err) { console.error(err); }
+                setSending(false);
+            };
+
+            const handleImageUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                // 1. Show preview instantly (optimistic UI could be added here, but we'll wait for DB)
+                setSending(true);
+                try {
+                    // 2. Compress Image
+                    const base64 = await compressImage(file, 400, 0.7); // 400px width limit for Base64 safety
+                    
+                    // 3. Send as message
+                    await db.collection("messages").add({
+                        text: "", // Empty text, just image
+                        imageBase64: base64, // Bot will read this and send to Discord
+                        uid: user.uid, 
+                        displayName: user.displayName || "Omni-User",
+                        photoURL: user.photoURL || "", 
+                        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                        platform: "Web"
+                    });
+                } catch(err) {
+                    alert("Image failed: " + err.message);
+                }
+                setSending(false);
+                if (fileInputRef.current) fileInputRef.current.value = "";
             };
 
             return (
-                <div className="flex flex-col h-screen max-w-7xl mx-auto border-x border-slate-800/50 shadow-2xl relative">
-                    {showSettings && <SettingsModal user={user} onClose={() => setShowSettings(false)} />}
+                <div className="flex flex-col h-screen max-w-6xl mx-auto border-x border-slate-800/50 shadow-2xl relative">
                     
                     {/* Header */}
-                    <header className="glass-panel p-4 flex justify-between items-center z-20">
+                    <header className="glass-panel px-6 py-4 flex justify-between items-center z-20 border-b border-slate-800/50">
                         <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-black rounded flex items-center justify-center border border-blue-500/30">
-                                <i className="fa-solid fa-infinity text-white text-lg"></i>
+                            <div className="w-10 h-10 bg-blue-600/20 rounded-lg flex items-center justify-center border border-blue-500/30 shadow-[0_0_15px_rgba(37,99,235,0.2)]">
+                                <i className="fa-solid fa-globe text-blue-400"></i>
                             </div>
                             <div>
-                                <h1 className="font-bold text-lg leading-none text-white">Global_Feed</h1>
-                                <p className="text-[10px] text-green-500 uppercase tracking-widest mt-1">● System Online</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-3 cursor-pointer hover:bg-white/5 p-2 rounded-lg transition" onClick={() => setShowSettings(true)}>
-                                <div className="text-right hidden sm:block">
-                                    <p className="text-sm font-bold text-blue-400">{user.displayName}</p>
-                                    <p className="text-[10px] text-slate-500 uppercase">Operative</p>
+                                <h1 className="font-bold text-lg text-white tracking-wide">GLOBAL<span className="text-blue-500">FEED</span></h1>
+                                <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                    <span className="text-[10px] text-slate-400 uppercase tracking-widest">Uplink Stable</span>
                                 </div>
-                                {user.photoURL ? 
-                                    <img src={user.photoURL} className="w-10 h-10 rounded border border-slate-600 object-cover" /> : 
-                                    <div className="w-10 h-10 bg-slate-800 rounded border border-slate-600 flex items-center justify-center text-white">{user.displayName?.[0]}</div>
-                                }
                             </div>
-                            <button onClick={() => auth.signOut()} className="w-10 h-10 rounded bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center transition border border-red-500/20">
-                                <i className="fa-solid fa-power-off"></i>
-                            </button>
                         </div>
+                        <button onClick={() => auth.signOut()} className="w-9 h-9 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center transition border border-red-500/20">
+                            <i className="fa-solid fa-power-off"></i>
+                        </button>
                     </header>
 
                     {/* Messages Area */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-6 relative z-10">
-                        {messages.map((msg, i) => {
+                    <div className="flex-1 overflow-y-auto p-4 space-y-6 relative z-10 scroll-smooth">
+                        {messages.map((msg) => {
                             const isMe = msg.uid === user.uid;
+                            const isDiscord = msg.platform === 'Discord';
                             
                             return (
                                 <div key={msg.id} className={`flex gap-4 message-anim ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                    {/* Layout for others: Avatar Left */}
+                                    {/* Avatar (Left for others) */}
                                     {!isMe && (
-                                        <div className="flex-shrink-0 mt-1">
+                                        <div className="flex-shrink-0 mt-1 relative">
                                             {msg.photoURL ? 
-                                                <img src={msg.photoURL} className="w-10 h-10 rounded border border-slate-700 object-cover shadow-lg" /> : 
-                                                <div className="w-10 h-10 bg-slate-800 rounded border border-slate-700 flex items-center justify-center font-bold text-slate-400">{msg.displayName?.[0]}</div>
+                                                <img src={msg.photoURL} className="w-9 h-9 rounded-lg border border-slate-700 object-cover" /> : 
+                                                <div className="w-9 h-9 bg-slate-800 rounded-lg border border-slate-700 flex items-center justify-center font-bold text-slate-500 text-xs">{msg.displayName?.[0]}</div>
                                             }
+                                            {isDiscord && <div className="absolute -bottom-1 -right-1 bg-[#5865F2] text-white text-[8px] px-1 rounded border border-black"><i className="fa-brands fa-discord"></i></div>}
                                         </div>
                                     )}
 
-                                    <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[70%]`}>
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span className={`text-sm font-bold ${isMe ? 'text-blue-400' : 'text-slate-300'}`}>{msg.displayName}</span>
-                                            <span className="text-[10px] text-slate-500 uppercase">{formatTime(msg.timestamp)}</span>
-                                            {msg.platform === 'Discord' && <span className="bg-indigo-600/80 text-[9px] px-1.5 py-0.5 rounded text-white border border-indigo-400/30">DISCORD</span>}
+                                    <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-[85%] sm:max-w-[70%]`}>
+                                        <div className="flex items-center gap-2 mb-1 opacity-70">
+                                            <span className={`text-xs font-bold ${isMe ? 'text-blue-400' : 'text-slate-300'}`}>{msg.displayName}</span>
+                                            <span className="text-[9px] text-slate-500 uppercase">{formatTime(msg.timestamp)}</span>
                                         </div>
                                         
-                                        <div className={`p-3.5 rounded-lg text-sm leading-relaxed shadow-lg backdrop-blur-sm border ${
+                                        <div className={`p-3 rounded-2xl text-sm leading-relaxed shadow-lg backdrop-blur-md border overflow-hidden ${
                                             isMe 
-                                            ? 'bg-blue-600/20 border-blue-500/30 text-blue-50' 
-                                            : 'bg-black/40 border-slate-700/50 text-slate-200'
+                                            ? 'bg-blue-600/20 border-blue-500/30 text-blue-50 rounded-tr-sm' 
+                                            : 'bg-slate-800/60 border-slate-700/50 text-slate-200 rounded-tl-sm'
                                         }`}>
-                                            {msg.text}
+                                            {/* Text Content */}
+                                            {msg.text && <p className="whitespace-pre-wrap break-words">{msg.text}</p>}
+                                            
+                                            {/* Image from Discord (URL) */}
+                                            {msg.imageURL && (
+                                                <div className="mt-2 rounded-lg overflow-hidden border border-white/10">
+                                                    <img src={msg.imageURL} className="max-w-full h-auto block" loading="lazy" />
+                                                </div>
+                                            )}
+
+                                            {/* Image from Web (Base64) */}
+                                            {msg.imageBase64 && (
+                                                <div className="mt-2 rounded-lg overflow-hidden border border-white/10">
+                                                    <img src={msg.imageBase64} className="max-w-full h-auto block" loading="lazy" />
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
-                                    {/* Layout for Me: Avatar Right */}
+                                    {/* Avatar (Right for me) */}
                                     {isMe && (
                                         <div className="flex-shrink-0 mt-1">
                                             {msg.photoURL ? 
-                                                <img src={msg.photoURL} className="w-10 h-10 rounded border border-blue-500/30 object-cover shadow-lg" /> : 
-                                                <div className="w-10 h-10 bg-blue-900 rounded border border-blue-500/30 flex items-center justify-center font-bold text-blue-200">{msg.displayName?.[0]}</div>
+                                                <img src={msg.photoURL} className="w-9 h-9 rounded-lg border border-blue-500/30 object-cover" /> : 
+                                                <div className="w-9 h-9 bg-blue-900 rounded-lg border border-blue-500/30 flex items-center justify-center font-bold text-blue-200 text-xs">{msg.displayName?.[0]}</div>
                                             }
                                         </div>
                                     )}
@@ -307,19 +276,41 @@
 
                     {/* Input Area */}
                     <div className="p-4 glass-panel border-t border-slate-800/50 z-20">
-                        <form onSubmit={send} className="relative flex gap-4 max-w-5xl mx-auto">
+                        <form onSubmit={sendMessage} className="relative flex gap-3 max-w-5xl mx-auto">
+                            
+                            {/* Hidden File Input */}
+                            <input 
+                                type="file" 
+                                ref={fileInputRef}
+                                accept="image/*"
+                                onChange={handleImageUpload}
+                                className="hidden"
+                            />
+                            
+                            {/* Attach Button */}
+                            <button 
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={sending}
+                                className="w-12 h-12 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-400 flex items-center justify-center transition"
+                            >
+                                <i className="fa-solid fa-paperclip"></i>
+                            </button>
+
                             <input 
                                 value={text} 
                                 onChange={e => setText(e.target.value)} 
                                 placeholder="Transmit data..."
-                                className="flex-1 bg-black/50 border border-slate-700 text-white rounded-lg pl-4 pr-12 py-3 focus:border-blue-500 focus:shadow-[0_0_15px_rgba(37,99,235,0.2)] outline-none transition placeholder-slate-600"
+                                disabled={sending}
+                                className="flex-1 bg-black/40 border border-slate-700 text-white rounded-xl px-5 focus:border-blue-500 focus:shadow-[0_0_15px_rgba(37,99,235,0.15)] outline-none transition placeholder-slate-600"
                             />
-                            <button type="submit" className={`px-6 rounded-lg font-bold uppercase text-sm tracking-wider transition border ${
+                            
+                            <button type="submit" disabled={sending || !text.trim()} className={`w-12 h-12 rounded-xl flex items-center justify-center transition border ${
                                 text.trim() 
                                 ? 'bg-blue-600 text-white border-blue-500 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]' 
-                                : 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed'
+                                : 'bg-slate-800 text-slate-600 border-slate-700 cursor-not-allowed'
                             }`}>
-                                Send
+                                {sending ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-paper-plane"></i>}
                             </button>
                         </form>
                     </div>
@@ -331,7 +322,16 @@
             const [user, setUser] = useState(null);
             const [loading, setLoading] = useState(true);
             useEffect(() => auth.onAuthStateChanged(u => { setUser(u); setLoading(false); }), []);
-            if (loading) return <div className="h-screen flex items-center justify-center bg-black text-blue-500"><i className="fa-solid fa-circle-notch fa-spin text-4xl"></i></div>;
+            
+            if (loading) return (
+                <div className="h-screen flex items-center justify-center bg-black">
+                    <div className="flex gap-2">
+                        <div className="w-3 h-3 bg-blue-500 rounded-full typing-dot"></div>
+                        <div className="w-3 h-3 bg-blue-500 rounded-full typing-dot"></div>
+                        <div className="w-3 h-3 bg-blue-500 rounded-full typing-dot"></div>
+                    </div>
+                </div>
+            );
             return user ? <ChatRoom user={user} /> : <Login />;
         }
 
