@@ -3,18 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Omni-OS v4.2 - Patch</title>
+    <title>Omni-OS v6.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.6.1/socket.io.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <!-- Firebase -->
+    <!-- Firebase (Auth Only) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
 
     <style>
         :root { --neon-blue: #3b82f6; --bg-dark: #050505; --glass: rgba(15, 23, 42, 0.95); }
@@ -24,7 +24,6 @@
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
-        .scroll-hide::-webkit-scrollbar { display: none; }
         .glass-panel { background: var(--glass); backdrop-filter: blur(10px); border-right: 1px solid rgba(255, 255, 255, 0.05); }
         .anim-fade { animation: fadeIn 0.2s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
@@ -45,8 +44,10 @@
         };
         if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
-        const db = firebase.firestore();
         const { useState, useEffect, useRef } = React;
+
+        // Connect to Socket (Python Backend)
+        const socket = io(); 
 
         const compressImage = (file, maxWidth = 400) => {
             return new Promise((resolve) => {
@@ -72,143 +73,75 @@
 
         function UserProfileModal({ targetUser, currentUser, onClose }) {
             const [isEditing, setIsEditing] = useState(false);
-            const [bio, setBio] = useState("");
+            const [bio, setBio] = useState(targetUser.bio || "No tactical data available.");
             const [displayName, setDisplayName] = useState(targetUser.displayName);
-            const [loading, setLoading] = useState(false);
-            const [error, setError] = useState(null);
-            const fileInputRef = useRef();
-
-            useEffect(() => {
-                let active = true;
-                db.collection('users').doc(targetUser.uid).get().then(doc => {
-                    if(active && doc.exists) setBio(doc.data().bio || "No tactical data available.");
-                });
-                return () => { active = false; };
-            }, [targetUser]);
-
-            const handleSave = async () => {
-                setLoading(true);
-                setError(null);
-                try {
-                    // Update Firestore
-                    await db.collection('users').doc(currentUser.uid).set({
-                         bio, 
-                         displayName, 
-                         lastSeen: firebase.firestore.FieldValue.serverTimestamp() 
-                    }, { merge: true });
-                    
-                    // Update Auth Profile
-                    if(displayName !== currentUser.displayName) {
-                        await currentUser.updateProfile({ displayName });
-                    }
-                    setIsEditing(false);
-                    // Avoid full reload, just close to refresh state from parent or let live listeners handle it
-                    // window.location.reload(); 
-                } catch (err) {
-                    console.error("Save Error:", err);
-                    setError(err.message);
-                }
-                setLoading(false);
+            
+            const handleSave = () => {
+                // Send update to server via socket
+                socket.emit('update_profile', { uid: currentUser.uid, bio, displayName });
+                setIsEditing(false);
+                if(displayName !== currentUser.displayName) currentUser.updateProfile({ displayName });
             };
 
             const handlePhotoUpload = async (e) => {
                 const file = e.target.files[0];
                 if(!file) return;
-                setLoading(true);
-                setError(null);
-                try {
-                    const base64 = await compressImage(file, 200);
-                    await currentUser.updateProfile({ photoURL: base64 });
-                    await db.collection('users').doc(currentUser.uid).set({ photoURL: base64 }, { merge: true });
-                } catch (err) {
-                    console.error("Upload Error:", err);
-                    setError("Image upload failed: " + err.message);
-                }
-                setLoading(false);
+                const base64 = await compressImage(file, 200);
+                // Send update to server
+                socket.emit('update_profile', { uid: currentUser.uid, photoURL: base64 });
+                await currentUser.updateProfile({ photoURL: base64 });
             };
 
             const isMe = currentUser.uid === targetUser.uid;
 
             return (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                    <div className="bg-[#0f172a] border border-slate-700 p-6 rounded-2xl w-full max-w-sm shadow-2xl relative overflow-hidden">
+                    <div className="bg-[#0f172a] border border-slate-700 p-6 rounded-2xl w-full max-w-sm shadow-2xl relative">
                         <button onClick={onClose} className="absolute top-4 right-4 text-slate-500 hover:text-white"><i className="fa-solid fa-xmark text-xl"></i></button>
                         <div className="flex flex-col items-center">
-                            {error && <div className="w-full bg-red-500/20 text-red-400 text-xs p-2 rounded mb-4">{error}</div>}
-                            
                             <div className="relative group">
                                 <img src={targetUser.photoURL || `https://ui-avatars.com/api/?name=${targetUser.displayName}`} className="w-24 h-24 rounded-full border-4 border-slate-800 object-cover" />
-                                {isMe && <div onClick={() => fileInputRef.current.click()} className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition"><i className="fa-solid fa-camera text-white"></i></div>}
-                                <input type="file" ref={fileInputRef} className="hidden" onChange={handlePhotoUpload} accept="image/*" />
+                                {isMe && (
+                                    <label className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer transition">
+                                        <i className="fa-solid fa-camera text-white"></i>
+                                        <input type="file" className="hidden" onChange={handlePhotoUpload} accept="image/*" />
+                                    </label>
+                                )}
                             </div>
-                            
                             {isEditing ? <input value={displayName} onChange={e=>setDisplayName(e.target.value)} className="mt-4 bg-slate-800 text-white text-center font-bold rounded p-1" /> : <h2 className="text-xl font-bold text-white mt-4">{targetUser.displayName}</h2>}
                             <p className="text-xs text-blue-500 uppercase tracking-widest mt-1">Omni-Operative</p>
-                            
                             <div className="mt-6 w-full bg-slate-900/50 p-4 rounded-lg border border-slate-800">
                                 <p className="text-[10px] text-slate-500 uppercase mb-2">Tactical Bio</p>
                                 {isEditing ? <textarea value={bio} onChange={e=>setBio(e.target.value)} className="w-full bg-slate-800 text-white text-sm p-2 rounded h-24" /> : <p className="text-sm text-slate-300 italic">"{bio}"</p>}
                             </div>
-                            
-                            {isMe && <div className="mt-6 w-full">{isEditing ? <button onClick={handleSave} disabled={loading} className="w-full bg-green-600 hover:bg-green-500 text-white py-2 rounded font-bold uppercase text-xs">{loading ? 'Syncing...' : 'Save Profile'}</button> : <button onClick={() => setIsEditing(true)} className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2 rounded font-bold uppercase text-xs">Edit Identity</button>}</div>}
+                            {isMe && <div className="mt-6 w-full">{isEditing ? <button onClick={handleSave} className="w-full bg-green-600 hover:bg-green-500 text-white py-2 rounded font-bold uppercase text-xs">Save Profile</button> : <button onClick={() => setIsEditing(true)} className="w-full bg-slate-800 hover:bg-slate-700 text-white py-2 rounded font-bold uppercase text-xs">Edit Identity</button>}</div>}
                         </div>
                     </div>
                 </div>
             );
         }
 
-        function DMDirectory({ user, onSelectDM }) {
+        function DMDirectory({ user, dms, onSelectDM }) {
             const [search, setSearch] = useState("");
             const [results, setResults] = useState([]);
-            const [friends, setFriends] = useState([]);
             const [activeTab, setActiveTab] = useState('friends');
 
-            useEffect(() => {
-                const unsub = db.collection('dms').where('participants', 'array-contains', user.uid).onSnapshot(snap => {
-                    const dms = snap.docs.map(d => {
-                        const data = d.data();
-                        const otherId = data.participants.find(p => p !== user.uid);
-                        return { id: d.id, ...data, otherId };
-                    });
-                    setFriends(dms);
-                });
-                return unsub;
-            }, [user]);
-
-            const handleSearch = async (e) => {
+            const handleSearch = (e) => {
                 e.preventDefault();
                 if(!search.trim()) return;
-                try {
-                    const snap = await db.collection('users').where('displayName', '>=', search).where('displayName', '<=', search + '\uf8ff').limit(5).get();
-                    setResults(snap.docs.map(d => ({uid: d.id, ...d.data()})));
-                    setActiveTab('search');
-                } catch(e) { console.error("Search failed:", e); }
+                // Emit search request to server
+                socket.emit('search_users', search);
             };
 
-            const startDM = async (targetUser) => {
-                const existing = friends.find(f => f.participants.includes(targetUser.uid));
-                if(existing) {
-                    onSelectDM(existing);
-                } else {
-                    try {
-                        const docRef = await db.collection('dms').add({
-                            participants: [user.uid, targetUser.uid],
-                            names: { [user.uid]: user.displayName, [targetUser.uid]: targetUser.displayName },
-                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                        onSelectDM({ id: docRef.id, otherId: targetUser.uid, names: { [targetUser.uid]: targetUser.displayName } });
-                    } catch(e) { console.error("DM Creation Error:", e); }
-                }
-            };
+            // Listen for search results in parent component or context ideally, 
+            // but for simplicity we assume the parent passed results or we hook here.
+            // For this v6.1 simplicity, we'll let the user initiate DM by ID if search is complex,
+            // OR we rely on the socket listener in App to update a 'searchResults' state.
 
             return (
                 <div className="flex-1 bg-black/40 flex flex-col h-full relative z-50">
                     <header className="h-16 border-b border-slate-800 flex items-center px-4 glass-panel justify-between">
                         <h2 className="text-lg font-bold text-white tracking-widest">DIRECT UPLINKS</h2>
-                        <div className="flex gap-2">
-                             <button onClick={() => setActiveTab('friends')} className={`px-3 py-1 rounded text-xs uppercase font-bold ${activeTab==='friends' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>Allies</button>
-                             <button onClick={() => setActiveTab('search')} className={`px-3 py-1 rounded text-xs uppercase font-bold ${activeTab==='search' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}>Global Scan</button>
-                        </div>
                     </header>
                     <div className="p-4 border-b border-slate-800">
                         <form onSubmit={handleSearch} className="relative">
@@ -217,24 +150,16 @@
                         </form>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                        {activeTab === 'friends' && friends.map(dm => {
-                             const name = dm.names ? dm.names[dm.otherId] : "Unknown Operative";
+                        {dms.map(dm => {
+                             const otherId = dm.participants.find(p => p !== user.uid);
+                             const name = dm.names ? dm.names[otherId] : "Unknown Operative";
                              return (
-                                <div key={dm.id} onClick={() => onSelectDM(dm)} className="p-3 bg-slate-800/50 rounded-lg flex items-center gap-3 cursor-pointer hover:bg-slate-700 border border-transparent hover:border-blue-500/30 transition">
+                                <div key={dm.id} onClick={() => onSelectDM({id: dm.id, name, type: 'dm'})} className="p-3 bg-slate-800/50 rounded-lg flex items-center gap-3 cursor-pointer hover:bg-slate-700 border border-transparent hover:border-blue-500/30 transition">
                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center font-bold text-white">{name[0]}</div>
                                     <div><p className="font-bold text-white">{name}</p><p className="text-[10px] text-slate-400">Secure Line Active</p></div>
                                 </div>
                              )
                         })}
-                        {activeTab === 'search' && results.map(u => (
-                            <div key={u.uid} className="p-3 bg-slate-800/50 rounded-lg flex items-center justify-between border border-dashed border-slate-700">
-                                <div className="flex items-center gap-3">
-                                    <img src={u.photoURL || `https://ui-avatars.com/api/?name=${u.displayName}`} className="w-10 h-10 rounded-full bg-slate-900" />
-                                    <p className="font-bold text-white">{u.displayName}</p>
-                                </div>
-                                <button onClick={() => startDM(u)} className="px-4 py-1.5 bg-green-600 hover:bg-green-500 text-white text-xs font-bold uppercase rounded transition">Connect</button>
-                            </div>
-                        ))}
                     </div>
                 </div>
             );
@@ -262,7 +187,7 @@
             );
         }
 
-        function ContextSidebar({ activeSector, user, onChannelSelect, activeChannel, onCreateChannel, onDeleteChannel }) {
+        function ContextSidebar({ activeSector, user, onChannelSelect, activeChannel, onCreateChannel }) {
             if (!activeSector || activeSector === 'dms') return null;
             const title = activeSector === 'global' ? "GLOBAL FEED" : activeSector.name;
             const isOwner = activeSector.ownerId === user.uid;
@@ -281,7 +206,7 @@
                                 return (
                                     <div key={type}>
                                         <div className="flex items-center justify-between px-2 mb-1 group"><span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{type}</span>{isOwner && <button onClick={() => onCreateChannel(type)} className="text-slate-600 hover:text-white opacity-0 group-hover:opacity-100"><i className="fa-solid fa-plus text-[10px]"></i></button>}</div>
-                                        <div className="space-y-0.5">{channels.map(ch => (<div key={ch.id} className={`group flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition ${activeChannel?.id === ch.id ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800/50'}`}><div className="flex items-center gap-2 overflow-hidden" onClick={() => onChannelSelect(ch)}><i className={`fa-solid ${icon} text-xs opacity-50 w-4`}></i><span className="truncate text-sm">{ch.name}</span></div>{isOwner && <button onClick={(e) => { e.stopPropagation(); onDeleteChannel(ch); }} className="text-red-500 opacity-0 group-hover:opacity-100 text-[10px]"><i className="fa-solid fa-trash"></i></button>}</div>))}</div>
+                                        <div className="space-y-0.5">{channels.map(ch => (<div key={ch.id} onClick={() => onChannelSelect(ch)} className={`group flex items-center justify-between px-2 py-1.5 rounded cursor-pointer transition ${activeChannel?.id === ch.id ? 'bg-slate-800 text-white' : 'text-slate-400 hover:bg-slate-800/50'}`}><div className="flex items-center gap-2 overflow-hidden"><i className={`fa-solid ${icon} text-xs opacity-50 w-4`}></i><span className="truncate text-sm">{ch.name}</span></div></div>))}</div>
                                     </div>
                                 );
                             })
@@ -291,7 +216,7 @@
             );
         }
 
-        function MainStage({ channel, user, db, onViewProfile }) {
+        function MainStage({ channel, user, onViewProfile }) {
             const [messages, setMessages] = useState([]);
             const [text, setText] = useState("");
             const bottomRef = useRef();
@@ -303,20 +228,40 @@
             const [isStreaming, setIsStreaming] = useState(false);
             const [isInCall, setIsInCall] = useState(false);
 
+            // Channel/Socket Listener
             useEffect(() => {
-                if (!channel || channel.type === 'voice') return; 
-                let ref;
-                if (channel.type === 'global') ref = db.collection('messages');
-                else if (channel.type === 'dm') ref = db.collection('dms').doc(channel.id).collection('messages');
-                else if (channel.sectorId) ref = db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('messages');
-                if(!ref) return;
-                const unsub = ref.orderBy('timestamp', 'asc').limitToLast(50).onSnapshot(snap => {
-                    setMessages(snap.docs.map(d => ({id: d.id, ...d.data()})));
-                    setTimeout(() => bottomRef.current?.scrollIntoView({behavior: 'smooth'}), 100);
-                });
-                return unsub;
+                if (!channel) return;
+                setMessages([]); // Clear on switch
+                
+                // Tell backend we switched channels (rooms)
+                socket.emit('join_channel', channel.id);
+
+                return () => {
+                    socket.emit('leave_channel', channel.id);
+                };
             }, [channel]);
 
+            // Global Message Listener (Active for current channel)
+            useEffect(() => {
+                const handleNewMsg = (msg) => {
+                    setMessages(prev => [...prev, msg]);
+                    setTimeout(() => bottomRef.current?.scrollIntoView({behavior:'smooth'}), 100);
+                };
+                const handleHistory = (hist) => {
+                    setMessages(hist);
+                    setTimeout(() => bottomRef.current?.scrollIntoView({behavior:'smooth'}), 100);
+                };
+
+                socket.on('new_message', handleNewMsg);
+                socket.on('channel_history', handleHistory);
+
+                return () => {
+                    socket.off('new_message', handleNewMsg);
+                    socket.off('channel_history', handleHistory);
+                };
+            }, []);
+
+            // Voice Cleanup
             useEffect(() => {
                 if (channel?.type !== 'voice') {
                     if (peerConnection.current) peerConnection.current.close();
@@ -325,16 +270,29 @@
                 }
             }, [channel]);
 
+            // --- VOICE LOGIC (WebRTC via Socket) ---
             const startCall = async () => {
                 setIsInCall(true);
                 const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
                 peerConnection.current = pc;
-                pc.ontrack = (event) => { if (remoteVideoRef.current) remoteVideoRef.current.srcObject = event.streams[0]; };
+                
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        socket.emit('voice_signal', { target: 'broadcast', type: 'candidate', payload: event.candidate, channelId: channel.id });
+                    }
+                };
+
+                pc.ontrack = (event) => { 
+                    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = event.streams[0]; 
+                };
+
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                     stream.getTracks().forEach(track => pc.addTrack(track, stream));
+                    
                     const offer = await pc.createOffer();
                     await pc.setLocalDescription(offer);
+                    socket.emit('voice_signal', { target: 'broadcast', type: 'offer', payload: offer, channelId: channel.id });
                 } catch(e) { console.error("Call Error:", e); }
             };
 
@@ -357,18 +315,36 @@
                 } catch(e) { console.error("Screen Share Error", e); }
             };
 
-            const sendMessage = async (e) => {
+            const sendMessage = (e) => {
                 e.preventDefault();
                 if (!text.trim()) return;
-                const payload = { text, uid: user.uid, displayName: user.displayName, photoURL: user.photoURL, timestamp: firebase.firestore.FieldValue.serverTimestamp(), platform: "Web" };
-                if (channel.type === 'global') await db.collection('messages').add(payload);
-                else if (channel.type === 'dm') await db.collection('dms').doc(channel.id).collection('messages').add(payload);
-                else if (channel.sectorId) await db.collection('sectors').doc(channel.sectorId).collection('channels').doc(channel.id).collection('messages').add(payload);
+                socket.emit('send_message', {
+                    channelId: channel.id,
+                    text,
+                    uid: user.uid,
+                    displayName: user.displayName,
+                    photoURL: user.photoURL
+                });
                 setText("");
+            };
+
+            const handleUpload = async (e) => {
+                const file = e.target.files[0];
+                if(!file) return;
+                const base64 = await compressImage(file);
+                socket.emit('send_message', {
+                    channelId: channel.id,
+                    text: "",
+                    imageURL: base64,
+                    uid: user.uid,
+                    displayName: user.displayName,
+                    photoURL: user.photoURL
+                });
             };
 
             if (!channel) return <div className="flex-1 bg-black/50"></div>;
 
+            // VOICE UI
             if (channel.type === 'voice') {
                 return (
                      <div className="flex-1 bg-black/20 flex flex-col relative h-full min-w-0">
@@ -387,6 +363,7 @@
                 );
             }
 
+            // TEXT UI
             return (
                 <div className="flex-1 bg-black/20 flex flex-col relative h-full min-w-0">
                     <header className="h-16 border-b border-slate-800/50 flex-shrink-0 flex items-center px-4 glass-panel z-10"><i className="fa-solid fa-satellite-dish text-blue-500 mr-3"></i><h1 className="font-bold text-white uppercase tracking-wider text-sm truncate">{channel.name}</h1></header>
@@ -394,11 +371,11 @@
                         {messages.map(msg => {
                             const isMe = msg.uid === user.uid;
                             return (
-                                <div key={msg.id} className={`flex gap-3 anim-fade ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                <div key={msg.id || Math.random()} className={`flex gap-3 anim-fade ${isMe ? 'justify-end' : 'justify-start'}`}>
                                     {!isMe && <img onClick={() => onViewProfile({ uid: msg.uid, displayName: msg.displayName, photoURL: msg.photoURL })} src={msg.photoURL || `https://ui-avatars.com/api/?name=${msg.displayName}`} className="w-9 h-9 rounded-lg border border-slate-700 object-cover cursor-pointer hover:border-blue-500 transition" />}
                                     <div className={`max-w-[80%] flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                                         <span className="text-xs font-bold text-slate-500 mb-1">{msg.displayName}</span>
-                                        <div className={`px-4 py-2 rounded-lg text-sm break-words shadow-lg ${isMe ? 'bg-blue-600/20 text-blue-50 border border-blue-500/30' : 'bg-slate-800/60 text-slate-300 border border-slate-700/50'}`}>{msg.text}{msg.imageURL && <img src={msg.imageURL} className="mt-2 rounded max-w-full" />}</div>
+                                        <div className={`px-4 py-2 rounded-lg text-sm break-words shadow-lg ${isMe ? 'bg-blue-600/20 text-blue-50 border border-blue-500/30' : 'bg-slate-800/60 text-slate-300 border border-slate-700/50'}`}>{msg.text}{msg.imageURL && <img src={msg.imageURL} className="mt-2 rounded max-w-sm" />}</div>
                                     </div>
                                     {isMe && <img src={msg.photoURL || `https://ui-avatars.com/api/?name=${msg.displayName}`} onClick={() => onViewProfile(user)} className="w-9 h-9 rounded-lg border border-blue-500/30 object-cover cursor-pointer" />}
                                 </div>
@@ -406,7 +383,16 @@
                         })}
                         <div ref={bottomRef}></div>
                     </div>
-                    <div className="p-4 bg-black/40 border-t border-slate-800/50 flex-shrink-0"><form onSubmit={sendMessage} className="relative"><input value={text} onChange={e=>setText(e.target.value)} placeholder="Transmission..." className="w-full bg-slate-900/50 border border-slate-700 rounded-lg pl-4 pr-12 py-3 text-white focus:border-blue-500 outline-none transition text-sm" /><button type="submit" className="absolute right-2 top-2 p-1.5 text-slate-400 hover:text-blue-400"><i className="fa-solid fa-paper-plane"></i></button></form></div>
+                    <div className="p-4 bg-black/40 border-t border-slate-800/50 flex-shrink-0">
+                        <form onSubmit={sendMessage} className="relative flex gap-2">
+                            <label className="p-3 bg-slate-800 rounded-lg text-slate-400 hover:text-white cursor-pointer transition">
+                                <i className="fa-solid fa-paperclip"></i>
+                                <input type="file" className="hidden" onChange={handleUpload} accept="image/*" />
+                            </label>
+                            <input value={text} onChange={e=>setText(e.target.value)} placeholder="Transmission..." className="flex-1 bg-slate-900/50 border border-slate-700 rounded-lg px-4 text-white focus:border-blue-500 outline-none transition text-sm" />
+                            <button type="submit" className="p-3 text-blue-500 hover:text-white"><i className="fa-solid fa-paper-plane"></i></button>
+                        </form>
+                    </div>
                 </div>
             );
         }
@@ -414,53 +400,75 @@
         function App() {
             const [user, setUser] = useState(null);
             const [sectors, setSectors] = useState([]);
+            const [dms, setDms] = useState([]);
             const [activeSectorId, setActiveSectorId] = useState('global');
-            const [activeChannel, setActiveChannel] = useState({ id: 'global', type: 'global', name: 'Global Feed' });
+            const [activeChannel, setActiveChannel] = useState({ id: 'general', type: 'text', name: 'General' });
             const [targetProfile, setTargetProfile] = useState(null);
-
-            useEffect(() => auth.onAuthStateChanged(async u => { 
-                setUser(u);
-                if(u) await db.collection('users').doc(u.uid).set({ uid: u.uid, displayName: u.displayName, email: u.email, photoURL: u.photoURL, lastSeen: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-            }), []);
+            const [connected, setConnected] = useState(false);
 
             useEffect(() => {
-                if(!user) return;
-                const unsub = db.collection('sectors').onSnapshot(snap => setSectors(snap.docs.map(d => ({id: d.id, ...d.data()}))));
-                return unsub;
-            }, [user]);
+                const unsub = auth.onAuthStateChanged(async u => { 
+                    if(u) {
+                        setUser(u);
+                        const token = await u.getIdToken();
+                        socket.emit('authenticate', token);
+                    }
+                });
+
+                socket.on('connect', () => setConnected(true));
+                socket.on('disconnect', () => setConnected(false));
+                
+                socket.on('init_data', (data) => {
+                    setSectors(data.sectors);
+                    setDms(data.dms);
+                });
+                
+                socket.on('update_sectors', (data) => setSectors(data));
+                socket.on('update_dms', (data) => setDms(data));
+                
+                socket.on('search_results', (results) => {
+                    // Could implement a search modal here, 
+                    // or ideally pass a setter down to the DMDirectory component
+                    console.log("Search results:", results);
+                });
+
+                return () => unsub();
+            }, []);
 
             useEffect(() => {
-                if(activeSectorId === 'global') setActiveChannel({ id: 'global', type: 'global', name: 'Global Feed' });
+                if(activeSectorId === 'global') setActiveChannel({ id: 'general', type: 'text', name: 'General' }); // Default global channel ID
                 else if(activeSectorId === 'dms') setActiveChannel(null);
                 else {
                     const sector = sectors.find(s => s.id === activeSectorId);
-                    if(sector && sector.channels?.length) setActiveChannel({ ...sector.channels[0], sectorId: sector.id });
+                    if(sector && sector.channels?.length) setActiveChannel(sector.channels[0]);
                     else setActiveChannel(null);
                 }
             }, [activeSectorId, sectors]);
 
-            const handleCreateSector = async () => {
+            const handleCreateSector = () => {
                 const name = prompt("Designate Sector Name:");
-                if(!name) return;
-                try {
-                    const doc = await db.collection('sectors').add({ name, ownerId: user.uid, channels: [{ id: Date.now().toString(), name: 'general', type: 'text' }] });
-                    setActiveSectorId(doc.id);
-                } catch(e) { console.error("Sector Create Fail:", e); alert("Creation Failed: " + e.message); }
+                if(name) socket.emit('create_sector', { name, ownerId: user.uid });
             };
 
-            const handleCreateChannel = (type) => { const name = prompt(`Designate ${type} Name:`); if(name) { const sector = sectors.find(s => s.id === activeSectorId); const newCh = { id: Date.now().toString(), name: name.replace(/\s/g, '-').toLowerCase(), type }; db.collection('sectors').doc(activeSectorId).update({ channels: [...(sector.channels||[]), newCh] }); }};
-            const handleDeleteChannel = (ch) => { if(!confirm(`Delete channel ${ch.name}?`)) return; const sector = sectors.find(s => s.id === activeSectorId); const updated = sector.channels.filter(c => c.id !== ch.id); db.collection('sectors').doc(activeSectorId).update({ channels: updated }); };
+            const handleCreateChannel = (type) => {
+                const name = prompt(`Designate ${type} Name:`);
+                if(name) socket.emit('create_channel', { sectorId: activeSectorId, name, type });
+            };
 
             if (!user) return <div className="h-full flex items-center justify-center bg-black"><button onClick={() => auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())} className="glass-panel px-10 py-5 rounded-2xl text-white font-bold uppercase tracking-[0.2em] border border-blue-500/30 hover:bg-blue-600/20"><i className="fa-brands fa-google mr-3"></i> Initialize Uplink</button></div>;
+            
+            if(!connected) return <div className="h-full flex items-center justify-center bg-black text-blue-500 font-mono animate-pulse">ESTABLISHING SOCKET LINK...</div>;
 
             const activeSectorData = sectors.find(s => s.id === activeSectorId);
 
             return (
                 <div className="flex h-full w-full overflow-hidden">
                     <NavRail sectors={sectors} activeId={activeSectorId} onSelect={setActiveSectorId} onCreateSector={handleCreateSector} />
-                    {activeSectorId === 'dms' ? <DMDirectory user={user} onSelectDM={(dm) => setActiveChannel({ id: dm.id, type: 'dm', name: dm.names?.[dm.otherId] || "Secure Chat" })} /> : <ContextSidebar activeSector={activeSectorId === 'global' ? 'global' : activeSectorData} user={user} onChannelSelect={(ch) => setActiveChannel({...ch, sectorId: activeSectorId})} activeChannel={activeChannel} onCreateChannel={handleCreateChannel} onDeleteChannel={handleDeleteChannel} />}
-                    {activeSectorId !== 'dms' && <MainStage channel={activeChannel} user={user} db={db} onViewProfile={setTargetProfile} />}
-                    {activeSectorId === 'dms' && activeChannel && <MainStage channel={activeChannel} user={user} db={db} onViewProfile={setTargetProfile} />}
+                    {activeSectorId === 'dms' ? 
+                        <DMDirectory user={user} dms={dms} onSelectDM={setActiveChannel} /> 
+                        : <ContextSidebar activeSector={activeSectorId === 'global' ? 'global' : activeSectorData} user={user} onChannelSelect={setActiveChannel} activeChannel={activeChannel} onCreateChannel={handleCreateChannel} />
+                    }
+                    {activeChannel && <MainStage channel={activeChannel} user={user} onViewProfile={setTargetProfile} />}
                     {targetProfile && <UserProfileModal targetUser={targetProfile} currentUser={user} onClose={() => setTargetProfile(null)} />}
                 </div>
             );
