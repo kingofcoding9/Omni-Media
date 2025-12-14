@@ -81,6 +81,8 @@
         
         .md-code { background: rgba(0,0,0,0.3); color: #00f0ff; font-family: monospace; padding: 2px 4px; border: 1px solid #1e293b; }
         .md-link { color: #00f0ff; text-decoration: none; border-bottom: 1px dashed #00f0ff; }
+        
+        .glow-text { text-shadow: 0 0 5px rgba(0, 240, 255, 0.5); }
     </style>
 </head>
 <body>
@@ -160,7 +162,7 @@
         });
 
         // --- SECTOR MAP (MODAL) ---
-        const SectorMap = ({ sectors, onSelect, onClose, user, onCreateSector }) => {
+        const SectorMap = ({ sectors, onSelect, onClose, user, onCreateSector, onDeleteSector }) => {
             const mySectors = sectors.filter(s => s.id === 'global' || (s.members && s.members.includes(user.uid)) || s.ownerId === user.uid || s.isPublic);
             const [code, setCode] = useState("");
 
@@ -177,26 +179,34 @@
                         <button onClick={onClose} className="absolute top-4 right-4 text-red-500 hover:text-white"><i className="fa-solid fa-xmark text-2xl"></i></button>
                         
                         <div className="mb-6 border-b border-slate-800 pb-4">
-                            <h1 className="text-3xl font-bold text-white tracking-widest font-sans">SECTOR NAVIGATION</h1>
+                            <h1 className="text-3xl font-bold text-white tracking-widest font-sans glow-text">SECTOR NAVIGATION</h1>
                             <p className="text-cyber-blue font-mono text-xs">SELECT DESTINATION</p>
                         </div>
 
                         <div className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
-                            {mySectors.map(s => (
-                                <div key={s.id} onClick={() => onSelect(s.id)} className="group h-32 border border-slate-800 bg-[#0f172a] hover:border-cyber-blue hover:bg-[#1e293b] cursor-pointer transition p-4 flex flex-col justify-between relative overflow-hidden">
-                                    <div className="absolute top-0 right-0 p-2 opacity-50 text-[10px] font-mono">{s.id.slice(0,4)}</div>
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-black border border-slate-700 flex items-center justify-center font-bold text-gray-500 group-hover:text-cyber-blue group-hover:border-cyber-blue transition">
-                                            {s.name[0]}
+                            {mySectors.map(s => {
+                                const isOwner = s.ownerId === user.uid && s.id !== 'global';
+                                return (
+                                    <div key={s.id} onClick={() => onSelect(s.id)} className="group h-32 border border-slate-800 bg-[#0f172a] hover:border-cyber-blue hover:bg-[#1e293b] cursor-pointer transition p-4 flex flex-col justify-between relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 p-2 opacity-50 text-[10px] font-mono">{s.id.slice(0,4)}</div>
+                                        {isOwner && (
+                                            <button onClick={(e) => { e.stopPropagation(); onDeleteSector(s.id); }} className="absolute bottom-2 right-2 text-red-500 hover:bg-red-900/30 w-6 h-6 flex items-center justify-center rounded z-10 opacity-0 group-hover:opacity-100 transition">
+                                                <i className="fa-solid fa-trash text-xs"></i>
+                                            </button>
+                                        )}
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-black border border-slate-700 flex items-center justify-center font-bold text-gray-500 group-hover:text-cyber-blue group-hover:border-cyber-blue transition">
+                                                {s.name[0]}
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-lg text-white group-hover:text-cyber-blue leading-tight truncate w-32">{s.name}</h3>
+                                                <p className="text-[10px] text-gray-500 uppercase">{s.id === 'global' ? 'Public Hub' : 'Secure'}</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h3 className="font-bold text-lg text-white group-hover:text-cyber-blue leading-tight">{s.name}</h3>
-                                            <p className="text-[10px] text-gray-500 uppercase">{s.id === 'global' ? 'Public Hub' : 'Secure'}</p>
-                                        </div>
+                                        <div className="w-full h-1 bg-slate-800 mt-2 group-hover:bg-cyber-blue transition-colors"></div>
                                     </div>
-                                    <div className="w-full h-1 bg-slate-800 mt-2 group-hover:bg-cyber-blue transition-colors"></div>
-                                </div>
-                            ))}
+                                );
+                            })}
                             <div onClick={onCreateSector} className="h-32 border border-dashed border-slate-700 flex flex-col items-center justify-center cursor-pointer hover:border-cyber-green hover:text-cyber-green transition text-gray-600 gap-2">
                                 <i className="fa-solid fa-plus text-xl"></i>
                                 <span className="text-xs font-mono">ESTABLISH SECTOR</span>
@@ -313,7 +323,7 @@
         };
 
         // 2. Chat Terminal (Center)
-        const ChatTerminal = ({ channel, user, onViewProfile, toggleMap, toggleSystems, activeSectorName }) => {
+        const ChatTerminal = ({ channel, user, onViewProfile, toggleMap, toggleSystems, activeSectorName, onGlobal }) => {
             const [messages, setMessages] = useState([]);
             const [inputText, setInputText] = useState("");
             const bottomRef = useRef();
@@ -348,16 +358,22 @@
             return (
                 <div className="flex-1 flex flex-col min-w-0 bg-[#050a14] relative">
                     {/* Header */}
-                    <div className="h-14 border-b border-slate-800 bg-[#0f172a]/90 backdrop-blur flex items-center justify-between px-4 sticky top-0 z-20">
-                        <div className="flex items-center gap-4">
+                    <div className="h-14 border-b border-slate-800 bg-[#0f172a]/90 backdrop-blur flex items-center justify-between px-4 sticky top-0 z-20 gap-2">
+                        <div className="flex items-center gap-4 flex-1">
                             <button onClick={toggleSystems} className="md:hidden text-cyber-blue"><i className="fa-solid fa-bars text-xl"></i></button>
                             <button onClick={toggleMap} className="text-gray-400 hover:text-cyber-blue transition"><i className="fa-solid fa-map"></i></button>
                             <div className="h-4 w-[1px] bg-slate-700"></div>
-                            <div>
-                                <h1 className="text-white font-bold text-sm tracking-wide">{activeSectorName}</h1>
-                                <p className="text-[10px] text-cyber-blue font-mono">{channel ? `// ${channel.name}` : '// OFFLINE'}</p>
+                            <div className="min-w-0">
+                                <h1 className="text-white font-bold text-sm tracking-wide truncate">{activeSectorName}</h1>
+                                <p className="text-[10px] text-cyber-blue font-mono truncate">{channel ? `// ${channel.name}` : '// OFFLINE'}</p>
                             </div>
                         </div>
+                        
+                        {/* GLOBAL UPLINK BUTTON */}
+                        <button onClick={onGlobal} className="flex-shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded flex items-center gap-2 text-xs font-bold border border-indigo-400 shadow-[0_0_10px_rgba(99,102,241,0.5)] transition">
+                            <i className="fa-brands fa-discord"></i>
+                            <span className="hidden sm:inline">GLOBAL UPLINK</span>
+                        </button>
                     </div>
 
                     {/* Messages */}
@@ -422,13 +438,9 @@
                 socket.on('init_data', (data) => { 
                     setSectors(data.sectors); 
                     setDms(data.dms);
-                    
-                    // AUTO-SELECT GLOBAL & GENERAL
                     const global = data.sectors.find(s=>s.id==='global');
                     if(global && global.channels) {
-                         // Default to 'global' ID
                          setActiveSectorId('global');
-                         // Default to first channel (General)
                          setActiveChannel(global.channels[0]);
                     }
                 });
@@ -442,6 +454,20 @@
 
             const handleCreateSector = () => { const n = prompt("NAME:"); if(n) socket.emit('create_sector', { name: n, ownerId: user.uid }); };
             const handleCreateChannel = (t) => { const n = prompt("NAME:"); if(n) socket.emit('create_channel', { sectorId: activeSectorId, name: n, type: t }); };
+            
+            const handleDeleteSector = (id) => {
+                if(confirm("DANGER: DELETE ENTIRE SECTOR? THIS CANNOT BE UNDONE.")) {
+                    socket.emit('delete_sector', { sectorId: id, ownerId: user.uid });
+                }
+            };
+
+            const switchToGlobal = () => {
+                const global = sectors.find(s=>s.id==='global');
+                if(global) {
+                    setActiveSectorId('global');
+                    if(global.channels && global.channels[0]) setActiveChannel(global.channels[0]);
+                }
+            };
 
             if (!user) return (
                 <div className="h-full w-full flex items-center justify-center bg-black">
@@ -456,13 +482,19 @@
             return (
                 <div className="flex h-full w-full overflow-hidden bg-[#050a14]">
                     {/* Navigation Modal */}
-                    {isMapOpen && <SectorMap sectors={sectors} user={user} onSelect={(id) => { setActiveSectorId(id); setIsMapOpen(false); 
-                        // Auto-select first channel when switching sectors
-                        if(id !== 'dms') {
-                            const sec = sectors.find(s=>s.id===id);
-                            if(sec && sec.channels) setActiveChannel(sec.channels[0]);
-                        } else { setActiveChannel(null); }
-                    }} onClose={() => setIsMapOpen(false)} onCreateSector={handleCreateSector} />}
+                    {isMapOpen && <SectorMap sectors={sectors} user={user} 
+                        onSelect={(id) => { 
+                            setActiveSectorId(id); 
+                            setIsMapOpen(false); 
+                            if(id !== 'dms') {
+                                const sec = sectors.find(s=>s.id===id);
+                                if(sec && sec.channels) setActiveChannel(sec.channels[0]);
+                            } else { setActiveChannel(null); }
+                        }} 
+                        onClose={() => setIsMapOpen(false)} 
+                        onCreateSector={handleCreateSector}
+                        onDeleteSector={handleDeleteSector}
+                    />}
 
                     {/* Left Sidebar (Systems) */}
                     <SystemsPanel 
@@ -478,9 +510,10 @@
                         channel={activeChannel} user={user} onViewProfile={setTargetProfile}
                         toggleMap={() => setIsMapOpen(true)} toggleSystems={() => setSystemsOpen(true)}
                         activeSectorName={activeSectorId === 'dms' ? 'DIRECT LINK' : (activeSectorData?.name || 'UNKNOWN')}
+                        onGlobal={switchToGlobal}
                     />
 
-                    {/* Profile Modal Placeholder (Simplified) */}
+                    {/* Profile Modal */}
                     {targetProfile && (
                         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur flex items-center justify-center p-4" onClick={() => setTargetProfile(null)}>
                             <div className="bg-[#0f172a] cyber-border p-6 max-w-sm w-full relative" onClick={e=>e.stopPropagation()}>
